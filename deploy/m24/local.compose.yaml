@@ -1,0 +1,59 @@
+# Use after compose.yaml; generated settings live outside the checkout.
+services:
+  postgres:
+    volumes:
+      - ${SDC_LOCAL_STATE}/postgres-init.sql:/docker-entrypoint-initdb.d/010_identity.sql:ro
+  key-init:
+    image: node:24.21.0-bookworm-slim
+    user: root
+    entrypoint: [sh, -ec]
+    command: ['cp /source/decision.pem /target/decision-ed25519.pem; chown 1000:1000 /target/decision-ed25519.pem; chmod 0400 /target/decision-ed25519.pem']
+    volumes:
+      - ${SDC_DECISION_KEY_FILE}:/source/decision.pem:ro
+      - decision-key:/target
+    network_mode: none
+    security_opt: [no-new-privileges:true]
+  server:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/sdc-ca.pem
+      SDC_OIDC_BACKCHANNEL_ORIGIN: https://proxy:15943
+    volumes: !override
+      - decision-key:/run/sdc:ro
+      - ${SDC_ATTACHMENT_DIR}:/var/lib/sdc/attachments
+      - ${SDC_LOCAL_STATE}/tls/ca.pem:/run/sdc-ca.pem:ro
+    depends_on:
+      key-init:
+        condition: service_completed_successfully
+  proxy:
+    ports: !override
+      - "127.0.0.1:15943:15943"
+    volumes: !override
+      - ./local.nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${SDC_TLS_DIR}:/etc/nginx/certs:ro
+    depends_on:
+      keycloak:
+        condition: service_started
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    restart: unless-stopped
+    command: [start, --import-realm]
+    env_file: ["${SDC_LOCAL_STATE}/keycloak.env"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/sdc_identity
+      KC_DB_USERNAME: sdc_identity
+      KC_HOSTNAME: https://localhost:15943/identity
+      KC_HTTP_RELATIVE_PATH: /identity
+      KC_HTTP_ENABLED: 'true'
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: 'true'
+    volumes:
+      - ${SDC_LOCAL_STATE}/realm:/opt/keycloak/data/import:ro
+    networks: [edge, database]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+    security_opt: [no-new-privileges:true]
+volumes:
+  decision-key:

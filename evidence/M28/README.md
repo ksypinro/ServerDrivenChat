@@ -1,0 +1,14 @@
+# M28 OpenAI profile verification
+
+The implemented profile is documented in [the field/semantics contract](../../docs/openai-api-profile.md). Evidence covers actual FastAPI/TypeScript/HTTP/PostgreSQL state with **explicitly scripted native events and synthetic identity**, plus pinned official SDK consumers. It does not qualify a named coding client, real native caller-tool safety, live identity, packaging or production deployment. M27 separately established the declared real Cline I/O/control connection.
+
+- `gateway-final-tests.log`: final gateway/SDK suite after OpenAPI/authentication/retention changes. Python openai 3.26.0 runs typed sync, Chat chunks and high-level Chat/Responses accumulators; Node openai 7.30.0 runs against an actual loopback Uvicorn listener. Includes stable output replacement, function proposals/results/schema errors, original-key ambiguous retry, current instructions/history ownership, branch/edit refusal, new-gateway retrieval, quota/error/cancellation, replay cursors, retention tombstones, credential revocation during streaming and shared capacity/control reserve.
+- `root-tests.log`: all inherited root integration/regression suites including PostgreSQL dump/restore, with all milestone database variables enabled.
+- `storage-restart.log`: isolated actual Docker database restart and dump/restore acceptance.
+- `npm-ci.log`, `build.log`, `lint.log`: required locked workspace checks.
+- `native-evidence.log`: M27 actual native linkage validator rerun on preserved evidence.
+- `verification.json`, `commands.json`, `sources.json`: status, exact commands, runtime/SDK pins, source review and SHA-256 artifact references.
+
+Earlier probes are preserved: `gateway-tests-incomplete-helper-probe.log` showed the Python SDK's `get_final_response()` intentionally requires `response.completed`; incomplete responses are correctly kept incomplete and callers inspect/retrieve their terminal response. `gateway-tests-retention-fixture-probe.log` preserves an incorrect test-fixture attempt to expire a nonexistent generation column; the corrected fixture expires the authoritative operation. `root-tests-restart-collision.log` records an interrupted parallel run where the explicitly enabled Docker restart terminated other suites' connections. The corrected root run omits restart and tests that destructive fault separately. Neither probe is counted as a successful run.
+
+Usage counters are explicitly estimates, unknown counters remain null, output is terminal-buffered, and arbitrary model settings are refused before dispatch. The actual native Cline binding's caller-tool profile remains withheld pending effect-safety qualification. M30 owns full public/native/named-client acceptance. Swift source is unchanged; `swift-tests.log` records the repository-required companion checks. No Git metadata is present, so no commit was possible.

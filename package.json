@@ -1,0 +1,47 @@
+{
+  "name": "server-driven-chat",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "workspaces": [
+    "protocol",
+    "server",
+    "bridge",
+    "adapters/core",
+    "adapters/fake",
+    "control-ui",
+    "adapters/cline",
+    "extensions/vscode"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "schemas:export": "npm run build && node scripts/export-protocol-schemas.mjs",
+    "test": "npm run schemas:export && node --test tests/*.test.mjs tests/conformance/*.test.mjs",
+    "test:m06": "npm run build --workspace @server-driven-chat/server && npm run test:storage --workspace @server-driven-chat/server && node --test tests/restore.test.mjs",
+    "test:m08": "npm run build --workspace @server-driven-chat/server && node --test tests/auth-storage.test.mjs",
+    "test:m09": "npm run build --workspace @server-driven-chat/server && node --test tests/http-api.test.mjs tests/repair-server.test.mjs",
+    "test:m10": "npm run build --workspace @server-driven-chat/server && npm run build --workspace @server-driven-chat/bridge && npm run build --workspace @server-driven-chat/adapter-fake && node --test tests/bridge-runtime.test.mjs tests/lease-api.test.mjs tests/repair-runtime.test.mjs tests/repair-storage.test.mjs tests/repair-integration.test.mjs",
+    "test:m11": "npm run build --workspace @server-driven-chat/server && node --test --test-name-pattern=M11 tests/m11-13-acceptance.test.mjs",
+    "test:m12": "npm run build --workspaces --if-present && node --test --test-name-pattern=M12 tests/m12-projection.test.mjs tests/m11-13-acceptance.test.mjs",
+    "test:m13": "npm run build --workspaces --if-present && node --test --test-name-pattern=M13 tests/m13-bridge-staging.test.mjs tests/m11-13-acceptance.test.mjs",
+    "test:m14": "npm run build --workspaces --if-present && npm run test --workspace @server-driven-chat/control-ui && node --test tests/m14-api.test.mjs",
+    "test:m15": "npm run build --workspace @server-driven-chat/server && node --test tests/m15-pairing.test.mjs",
+    "companion:package": "sh companion/scripts/package-app.sh",
+    "test:m19": "npm run build && node --test tests/m19-cline.test.mjs",
+    "test:m20": "npm run build && node --test tests/m20-cline.test.mjs",
+    "test:m21": "npm run build && node --test tests/m21-connect.test.mjs tests/m21-binding.test.mjs",
+    "test:m22": "npm run build && node --test tests/m22-workflow.test.mjs tests/m11-13-acceptance.test.mjs tests/m20-cline.test.mjs tests/m21-binding.test.mjs",
+    "test:m27": "npm run build && node --test tests/m27-public-api.test.mjs tests/m27-server-policy.test.mjs",
+    "test:m29": "npm run build && node --test tests/m29-server-policy.test.mjs",
+    "test:m23": "npm run build && node --test tests/conformance/*.test.mjs tests/repair-*.test.mjs tests/m19-cline.test.mjs tests/m20-cline.test.mjs tests/m21-connect.test.mjs tests/m21-binding.test.mjs tests/m22-workflow.test.mjs"
+  },
+  "devDependencies": {
+    "openai": "7.30.0",
+    "typescript": "5.9.3",
+    "@anthropic-ai/sdk": "0.132.1"
+  }
+}

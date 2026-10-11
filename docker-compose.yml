@@ -1,0 +1,19 @@
+services:
+  postgres-m06:
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: sdc_m06_test
+      POSTGRES_PASSWORD: m06_local_test_only
+      POSTGRES_DB: sdc_m06_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres_m06_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdc_m06_test -d sdc_m06_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres_m06_data:

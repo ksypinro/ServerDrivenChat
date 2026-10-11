@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "lane": {
+      "enum": [
+        "prompt",
+        "control"
+      ]
+    },
+    "laneSeq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "commandId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "reason": {
+      "const": "obsolete_binding"
+    }
+  },
+  "required": [
+    "deviceId",
+    "lane",
+    "laneSeq",
+    "commandId",
+    "reason"
+  ],
+  "additionalProperties": false
+}

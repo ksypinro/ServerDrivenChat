@@ -1,0 +1,70 @@
+# Dependencies and reproducible build output
+node_modules/
+dist/
+.build/
+.swiftpm/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+
+# Test/tool caches and local editor state
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.nyc_output/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.aider*
+.codex/
+.claude/
+
+# Local configuration, credentials, signing material and database state
+.env
+.env.*
+*.env
+!*.env.example
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+LOCAL-LOGIN.txt
+login.json
+secrets/
+private-state/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.dump
+*.sql.gz
+backups/
+
+# Generated archives, logs and temporary work
+*.vsix
+*.dmg
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.log
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# Local qualification captures: retain prose and exact package manifests only.
+# Raw reports, screenshots, native test workspaces and transcripts stay local.
+/evidence/**
+!/evidence/**/
+!/evidence/**/*.md
+!/evidence/**/artifact-manifest.json
+/evidence/**/native-sandbox/

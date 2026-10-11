@@ -1,0 +1,36 @@
+FROM node:24.21.0-bookworm-slim AS build
+WORKDIR /workspace
+RUN npm install --global npm@11.19.0
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY protocol/package.json protocol/tsconfig.json ./protocol/
+COPY server/package.json server/tsconfig.json ./server/
+COPY bridge/package.json bridge/tsconfig.json ./bridge/
+COPY adapters/core/package.json adapters/core/tsconfig.json ./adapters/core/
+COPY adapters/fake/package.json adapters/fake/tsconfig.json ./adapters/fake/
+COPY control-ui/package.json control-ui/tsconfig.json control-ui/index.html control-ui/vite.config.ts ./control-ui/
+COPY adapters/cline/package.json adapters/cline/tsconfig.json ./adapters/cline/
+COPY extensions/vscode/package.json extensions/vscode/tsconfig.json ./extensions/vscode/
+RUN npm ci
+COPY protocol ./protocol
+COPY server ./server
+COPY bridge ./bridge
+COPY adapters ./adapters
+COPY control-ui ./control-ui
+COPY extensions ./extensions
+RUN npm run build && npm prune --omit=dev
+
+FROM node:24.21.0-bookworm-slim AS runtime
+ENV NODE_ENV=production SDC_SERVER_HOST=0.0.0.0 SDC_SERVER_PORT=3000
+WORKDIR /workspace
+COPY --from=build --chown=node:node /workspace/package.json ./package.json
+COPY --from=build --chown=node:node /workspace/node_modules ./node_modules
+COPY --from=build --chown=node:node /workspace/protocol/package.json ./protocol/package.json
+COPY --from=build --chown=node:node /workspace/protocol/dist ./protocol/dist
+COPY --from=build --chown=node:node /workspace/server/package.json ./server/package.json
+COPY --from=build --chown=node:node /workspace/server/dist ./server/dist
+COPY --from=build --chown=node:node /workspace/server/migrations ./server/migrations
+COPY --from=build --chown=node:node /workspace/control-ui/dist ./control-ui/dist
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=4 CMD node -e "fetch('http://127.0.0.1:3000/v2/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "server/dist/main.js"]

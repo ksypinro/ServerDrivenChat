@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "outDir": "typecheck-dist",
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../adapters/cline/src/**/*.ts"
+  ]
+}

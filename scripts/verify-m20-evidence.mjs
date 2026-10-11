@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { validateProtocolMessage, computeActionDigest } from "../protocol/dist/index.js";
+const path = process.argv[2] ?? "evidence/M20/live-vscode.json";
+const evidence = JSON.parse(await readFile(path, "utf8"));
+assert.equal(evidence.milestone, "M20"); assert.equal(evidence.status, "Done"); assert.equal(evidence.phase, "passed");
+const manifest = JSON.parse(await readFile("evidence/M20/artifact-manifest.json", "utf8"));
+assert.equal(evidence.artifacts.patch.revision, 2);
+assert.equal(evidence.artifacts.nativeAddon, `sha256:${manifest.nativeAddonSha256}`);
+const companion = await readFile("extensions/vscode/dist/sdc-cline-bridge-m20/dist/extension.cjs");
+assert.equal(evidence.artifacts.companion, `sha256:${createHash("sha256").update(companion).digest("hex")}`);
+for (const event of evidence.trace) assert.equal(validateProtocolMessage(event).valid, true, JSON.stringify(event));
+const results = evidence.results, select = kind => results.filter(item => item.kind === kind);
+assert.equal(select("submit").length, 4); assert.ok(select("submit").every(item => item.outcome.outcome === "accepted"));
+const turns = new Set(select("submit").map(item => item.command.turnId));
+assert.equal(turns.size, 4); assert.equal(evidence.trace.filter(item => item.type === "turn.started" && turns.has(item.payload.turnId)).length, 4);
+assert.equal(evidence.trace.filter(item => item.type === "turn.completed" && turns.has(item.payload.turnId)).length, 3);
+for (const item of select("decision")) {
+    assert.equal(item.outcome.outcome, "applied"); const { actionDigest, kind, evidence: nativeEvidence, expiresAt, ...input } = item.request;
+    assert.equal(actionDigest, await computeActionDigest(input));
+    assert.ok(evidence.trace.some(event => event.type === "approval.resolved" && event.payload.requestId === item.request.requestId && event.payload.decisionId === item.proposal.decisionId && event.payload.state === (item.proposal.choiceId === "deny" ? "denied" : "applied")));
+}
+assert.deepEqual(select("decision").map(item => item.proposal.choiceId), ["allow_once", "deny"]);
+assert.equal(select("allow-outcome")[0].content.trim(), `${evidence.marker}-ALLOWED`);
+assert.deepEqual(select("deny-outcome")[0].exists, { local: false, remote: false });
+const race = select("stale-local-race")[0]; assert.equal(race.outcome.outcome, "rejected"); assert.notEqual(race.first.requestId, race.next.requestId);
+assert.ok(evidence.trace.some(event => event.type === "approval.resolved" && event.payload.requestId === race.first.requestId && event.payload.state === "resolved_elsewhere"));
+assert.equal(select("unsupported-scope").length, 2); assert.ok(select("unsupported-scope").every(item => item.outcome.outcome === "unsupported")); assert.equal(select("unsupported-revoke")[0].outcome.outcome, "unsupported");
+const question = select("question")[0]; assert.equal(question.outcome.outcome, "applied");
+assert.ok(evidence.trace.some(event => event.type === "input.resolved" && event.payload.requestId === question.request.askId && event.payload.outcome === "answered"));
+assert.match(select("question-outcome")[0].output, /blue/); assert.match(select("question-outcome")[0].output, /QUESTION_DONE/);
+const cancellation = select("cancel")[0]; assert.equal(cancellation.outcome.outcome, "applied");
+assert.ok(evidence.trace.some(event => event.type === "turn.cancelled" && event.payload.turnId === cancellation.turnId));
+const after = select("cancel-outcome")[0].snapshot; assert.equal(after.isRunning, false); assert.equal(after.pending.length, 0); assert.equal(after.messages.length, 1);
+console.log("M20 live evidence: exact native allow/deny/local race/question/cancel and loaded artifacts verified");

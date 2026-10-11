@@ -1,0 +1,113 @@
+{
+  "name": "@server-driven-chat/cline-extension",
+  "version": "0.7.3",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/index.js",
+  "dependencies": {
+    "@server-driven-chat/adapter-cline": "0.1.0",
+    "@server-driven-chat/protocol": "0.1.0",
+    "@server-driven-chat/bridge": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build.mjs",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "package:development": "node scripts/package-development.mjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.101.0",
+    "rolldown": "1.1.5"
+  },
+  "publisher": "server-driven-chat",
+  "displayName": "Server-Driven Chat \u2014 Cline bridge",
+  "description": "Exact native task binding and addressed approval, question and cancellation controls for Cline 4.1.22",
+  "main": "./dist/extension.cjs",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "saoudrizwan.claude-dev"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "sdcCline.selectTask",
+        "title": "Cline Bridge: Select Existing Task"
+      },
+      {
+        "command": "sdcCline.inspect",
+        "title": "Cline Bridge: Inspect Binding"
+      },
+      {
+        "command": "sdcCline.disconnect",
+        "title": "Cline Bridge: Disconnect"
+      },
+      {
+        "command": "sdcCline.m19Probe",
+        "title": "Cline Bridge: Run M19 Two-Message Probe (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.reviewRequest",
+        "title": "Cline Bridge: Review Pending Native Approval"
+      },
+      {
+        "command": "sdcCline.answerQuestion",
+        "title": "Cline Bridge: Answer Pending Native Question"
+      },
+      {
+        "command": "sdcCline.cancelTurn",
+        "title": "Cline Bridge: Cancel Selected Native Turn"
+      },
+      {
+        "command": "sdcCline.m20Probe",
+        "title": "Cline Bridge: Run M20 Native Controls Probe (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.configureServer",
+        "title": "Cline Bridge: Configure Server"
+      },
+      {
+        "command": "sdcCline.connectServer",
+        "title": "Cline Bridge: Connect Current Task to Server"
+      },
+      {
+        "command": "sdcCline.connectionStatus",
+        "title": "Cline Bridge: Connection Status"
+      },
+      {
+        "command": "sdcCline.m21CaptureStart",
+        "title": "Cline Bridge: Start M21 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.m21CaptureFinish",
+        "title": "Cline Bridge: Finish M21 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.m22CaptureStart",
+        "title": "Cline Bridge: Start M22 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.m22CaptureFinish",
+        "title": "Cline Bridge: Finish M22 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.m23CaptureStart",
+        "title": "Cline Bridge: Start M23 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.m23CaptureFinish",
+        "title": "Cline Bridge: Finish M23 Acceptance Capture (Disposable Task)"
+      },
+      {
+        "command": "sdcCline.forgetCredentials",
+        "title": "Cline Bridge: Revoke and Forget Server Credentials"
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "baseVersion": "4.1.22",
+  "patchedVersion": "4.1.2203",
+  "apiVersion": "1.2",
+  "companionVersion": "0.3.0",
+  "companionExtensionId": "server-driven-chat.sdc-cline-bridge",
+  "companionBundleSha256": "6de49c1c1f50bcbe96d30db06c20e9a9ba057e6c1767473d7936aebf38d2d323",
+  "sourcePatchSha256": "cecbb82e0ea15c8dd6ea07406167e45c8589ffc67ea79bba027223bfae5a2667",
+  "originalBundleSha256": "369bfc6bd01de72d26013ed6ebac2c7c9cb5a564bb8ff14679d6a1ba2ab76178",
+  "patchedBundleSha256": "8da2f0506aacc06906d81783cd9ad540b93f68fdc64606d2c5e77b15d2ef1f29",
+  "nativeAddonSha256": "0ebcea87dd7f119f6cef806a964d1d63942581565275caeeaa36f397ad69b938",
+  "packages": [
+    {
+      "path": "/Users/samin/Documents/ServerDrivenChat/extensions/vscode/dist/cline-4.1.22-sdc-m21.3.vsix",
+      "sha256": "cc86d0cf2d246d6f3dbe1d7292ecdfd16386405af094d71ed90d1c8321f7cc41"
+    },
+    {
+      "path": "/Users/samin/Documents/ServerDrivenChat/extensions/vscode/dist/sdc-cline-bridge-0.3.0.vsix",
+      "sha256": "c2249ff450c0ae58c26027d8486bfc91eed5ce524a37cdff4712922f51809ec7"
+    }
+  ],
+  "installedExtensionModified": false,
+  "signing": "Unsigned development artifacts; M24 distribution gates remain open",
+  "compatibility": "Local VS Code only; Antigravity 3.83.0 and remote hosts unsupported"
+}

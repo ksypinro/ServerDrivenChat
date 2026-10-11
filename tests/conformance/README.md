@@ -1,0 +1,7 @@
+# M23 conformance suite
+
+This directory is the systematic fault suite; inherited integration checks live in `tests/repair-*.test.mjs`, `m19-cline`, `m20-cline`, `m21-*`, `m22-workflow` and the shared milestone tests. Run `npm run test:m23` after starting the disposable PostgreSQL fixture. Database cases require `M23_TEST_DATABASE_URL` (and M09/M10/M21/M22 variables for the inherited suites); omitted database variables produce explicit skips and cannot close acceptance.
+
+`runtime-fixture.mjs` and `mock-vscode.mjs` simulate adapter/UI dependencies. The callback check imports the actual extension UI module with a scoped Node module hook and tests cancellation, state/code validation, duplicate exchange and disposal. `m23-storage` uses a real file-backed SQLite database and SIGKILL child processes, but its marker effect is simulated rather than a Cline action. `m23-server` uses real PostgreSQL transactions and files. `m23-updates` verifies the retained reviewed native package; preserve the M21 package manifest and two native bundles before a clean-copy run. The Node 24 script copies these frozen inputs explicitly.
+
+Native pending-approval disconnect/reload/local decision and takeover evidence is a separate required gate. Do not interpret a green fixture suite as native acceptance or M26 performance/soak certification. Resource limits and recovery semantics are documented in `docs/cline-hardening.md`.

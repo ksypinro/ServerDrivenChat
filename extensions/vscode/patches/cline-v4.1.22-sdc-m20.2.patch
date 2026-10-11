@@ -1,0 +1,548 @@
+--- a/apps/vscode/src/exports/index.ts
++++ b/apps/vscode/src/exports/index.ts
+@@ -1,3 +1,4 @@
++import { createPinnedClineApi } from "./sdc-native-entry"
+ import { Controller } from "@core/controller"
+ import { sendChatButtonClickedEvent } from "@core/controller/ui/subscribeToChatButtonClicked"
+ import { Logger } from "@/shared/services/Logger"
+@@ -5,6 +6,7 @@
+ 
+ export function createClineAPI(sidebarController: Controller): ClineAPI {
+ 	const api: ClineAPI = {
++		serverDrivenChat: createPinnedClineApi(sidebarController),
+ 		startNewTask: async (task?: string, images?: string[]) => {
+ 			await sidebarController.clearTask()
+ 			await sidebarController.postStateToWebview()
+--- a/apps/vscode/src/exports/cline.d.ts
++++ b/apps/vscode/src/exports/cline.d.ts
+@@ -1,4 +1,7 @@
++import type { NativeBridgeApi } from "./sdc-native-api"
+ export interface ClineAPI {
++	/** Explicitly versioned maintained API; stock Cline does not expose this. */
++	serverDrivenChat?: NativeBridgeApi
+ 	/**
+ 	 * Starts a new task with an optional initial message and images.
+ 	 * @param task Optional initial task message.
+--- /dev/null
++++ b/apps/vscode/src/exports/sdc-native-controls.ts
+@@ -0,0 +1,175 @@
++import { createHash, randomUUID } from "node:crypto";
++import type { NativeInteraction, NativeControlReceipt, NativePermit } from "./sdc-native-api";
++
++interface ApprovalResult { approved: boolean; reason?: string }
++interface ToolRequest { toolCallId: string; toolName: string; input: unknown; policy: { autoApprove?: boolean } }
++/** Structural boundary inside the reviewed pinned application, never exposed to its companion. */
++export interface PinnedInteractions {
++    pendingAskResolve?: (answer: string) => void;
++    pendingToolApprovalResolve?: (answer: ApprovalResult) => void;
++    pendingToolApprovalMessage?: { toolCallId: string; messageTs: number; toolName: string };
++    handleRequestToolApproval(request: ToolRequest): Promise<ApprovalResult>;
++    handleAskQuestion(question: string, options: string[], context: unknown): Promise<string>;
++    resolvePendingToolApproval(prompt: string | undefined, response: string | undefined, images?: string[], files?: string[]): boolean;
++    resolvePendingAskQuestion(prompt: string | undefined): boolean;
++    clearPending(reason: string): void;
++    options: { getCwd?: () => string | undefined };
++}
++interface Identity { task: object; session: object; taskId: string; nativeTurnId: string }
++interface Slot {
++    interaction: NativeInteraction; identity: Identity; callback: object;
++    material: string; liveMaterial?: () => string; state: "pending" | "resolved"; receipt?: NativeControlReceipt;
++}
++function jsonClone(value: unknown): unknown {
++    const seen = new Set<object>();
++    const check = (item: unknown): void => {
++        if (item === null || typeof item === "boolean") return;
++        if (typeof item === "string") { if (/[\uD800-\uDFFF]/u.test(item)) throw new Error("Malformed Unicode"); return; }
++        if (typeof item === "number" && Number.isFinite(item)) return;
++        if (!item || typeof item !== "object" || seen.has(item)) throw new Error("Incomplete native JSON");
++        seen.add(item);
++        if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) throw new Error("Non-JSON native object");
++        for (const key of Reflect.ownKeys(item)) {
++            if (Array.isArray(item) && key === "length") continue;
++            const field = Object.getOwnPropertyDescriptor(item, key);
++            if (typeof key !== "string" || /[\uD800-\uDFFF]/u.test(key) || !field?.enumerable || !("value" in field)) throw new Error("Non-JSON native field");
++            if (Array.isArray(item) && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= item.length)) throw new Error("Non-JSON array field");
++            check(field.value);
++        }
++        if (Array.isArray(item)) for (let i = 0; i < item.length; i++) if (!(i in item)) throw new Error("Sparse native array");
++        seen.delete(item);
++    };
++    check(value); return JSON.parse(JSON.stringify(value));
++}
++const fingerprint = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
++
++/** Both native UI and addressed remote responses settle the very same captured native promise.
++ * Local fields are intercepted inside the maintained app build; no button automation is used. */
++export function instrumentInteractions(native: PinnedInteractions, hooks: {
++    identity(): Identity | undefined;
++    anchor(): number | undefined;
++    preview(messageId: string): string | undefined;
++    pending(interaction: NativeInteraction): void;
++    resolved(receipt: NativeControlReceipt): void;
++    now(): number;
++}) {
++    for (const name of ["pendingAskResolve", "pendingToolApprovalResolve", "pendingToolApprovalMessage"] as const) {
++        const field = Object.getOwnPropertyDescriptor(native, name);
++        if (!field?.configurable || !("value" in field)) throw new Error(`Pinned native interaction field mismatch: ${name}`);
++    }
++    if (![native.handleRequestToolApproval, native.handleAskQuestion, native.resolvePendingToolApproval, native.resolvePendingAskQuestion, native.clearPending].every(value => typeof value === "function")) throw new Error("Pinned native interaction methods mismatch");
++    let approvalCallback = native.pendingToolApprovalResolve;
++    let questionCallback = native.pendingAskResolve;
++    let approvalMessage = native.pendingToolApprovalMessage;
++    let approvalPreparation: { request: ToolRequest; identity: Identity } | undefined;
++    let questionPreparation: { question: string; choices: string[]; identity: Identity } | undefined;
++    let approval: Slot | undefined, question: Slot | undefined;
++    let response: NativeInteraction | undefined;
++    let remote: { slot: Slot; decisionId: string } | undefined;
++    let disposed = false;
++    const sameIdentity = (a: Identity, b: Identity | undefined): boolean => !!b && a.task === b.task && a.session === b.session && a.taskId === b.taskId && a.nativeTurnId === b.nativeTurnId;
++    const make = (kind: "approval" | "question", messageId: string, identity: Identity, callback: object, material: Partial<NativeInteraction>): Slot => {
++        const interaction: NativeInteraction = { askId: randomUUID(), askRevision: 1, taskId: identity.taskId, nativeTurnId: identity.nativeTurnId,
++            kind, messageId, expiresAt: new Date(hooks.now() + 10 * 60 * 1000).toISOString(), complete: true, ...material };
++        const slot: Slot = { interaction, identity, callback, material: fingerprint(interaction), state: "pending" };
++        return slot;
++    };
++    const settle = (slot: Slot | undefined, outcome: NativeControlReceipt["outcome"]): void => {
++        if (!slot || slot.state !== "pending") return;
++        slot.state = "resolved";
++        const isRemote = remote?.slot === slot;
++        slot.receipt = { askId: slot.interaction.askId, askRevision: slot.interaction.askRevision, taskId: slot.identity.taskId,
++            nativeTurnId: slot.identity.nativeTurnId, outcome, source: isRemote ? "remote" : "local",
++            ...(isRemote ? { decisionId: remote!.decisionId } : {}), evidence: `Captured native ${slot.interaction.kind} resolver settled for ${slot.interaction.messageId}; whole action once` };
++        if (sameIdentity(slot.identity, hooks.identity())) hooks.resolved(structuredClone(slot.receipt));
++    };
++    Object.defineProperty(native, "pendingToolApprovalResolve", { configurable: true, enumerable: true,
++        get: () => approvalCallback, set: (callback: ((result: ApprovalResult) => void) | undefined) => {
++            if (!callback) { approvalCallback = undefined; return; }
++            let captured: Slot | undefined;
++            const wrapped = (result: ApprovalResult): void => { if (captured?.state === "resolved") return; callback(result); settle(captured, result.approved ? "allowed" : "denied"); };
++            approvalCallback = wrapped;
++            // The native coordinator assigns message identity immediately after this resolver.
++            captureApproval = () => {
++                if (!approvalPreparation || !approvalMessage || approvalMessage.toolCallId !== approvalPreparation.request.toolCallId) return;
++                const { request, identity } = approvalPreparation;
++                if (!sameIdentity(identity, hooks.identity())) return;
++                let input: unknown, complete = true;
++                try { input = jsonClone(request.input); } catch { input = null; complete = false; }
++                captured = approval = make("approval", String(approvalMessage.messageTs), identity, wrapped, {
++                    toolCallId: request.toolCallId, toolName: request.toolName, input, preview: hooks.preview(String(approvalMessage.messageTs)) ?? "", complete,
++                    ...(native.options.getCwd?.() ? { cwd: native.options.getCwd() } : {}) });
++                const baseline = fingerprint([request.toolCallId, request.toolName, request.input, native.options.getCwd?.(), hooks.preview(captured.interaction.messageId)]);
++                captured.liveMaterial = () => { try { jsonClone(request.input); return fingerprint([request.toolCallId, request.toolName, request.input, native.options.getCwd?.(), hooks.preview(captured!.interaction.messageId)]) === baseline ? captured!.material : "changed"; } catch { return "changed"; } };
++                hooks.pending(structuredClone(captured.interaction));
++            };
++        } });
++    let captureApproval: (() => void) | undefined;
++    Object.defineProperty(native, "pendingToolApprovalMessage", { configurable: true, enumerable: true,
++        get: () => approvalMessage, set: (message: PinnedInteractions["pendingToolApprovalMessage"]) => { approvalMessage = message; if (message) captureApproval?.(); } });
++    Object.defineProperty(native, "pendingAskResolve", { configurable: true, enumerable: true,
++        get: () => questionCallback, set: (callback: ((answer: string) => void) | undefined) => {
++            if (!callback) { questionCallback = undefined; return; }
++            const prep = questionPreparation, anchor = hooks.anchor();
++            let captured: Slot | undefined;
++            const wrapped = (answer: string): void => { if (captured?.state === "resolved") return; callback(answer); settle(captured, answer ? "answered" : "dismissed"); };
++            questionCallback = wrapped;
++            if (prep && anchor !== undefined && sameIdentity(prep.identity, hooks.identity())) {
++                captured = question = make("question", String(anchor), prep.identity, wrapped, { question: prep.question, choices: [...prep.choices] });
++                hooks.pending(structuredClone(captured.interaction));
++            }
++        } });
++    const originalTool = native.handleRequestToolApproval.bind(native);
++    native.handleRequestToolApproval = async request => {
++        const identity = hooks.identity();
++        if (disposed || !identity) return { approved: false, reason: "Native task/session identity unavailable" };
++        if (approvalPreparation || questionPreparation || approvalCallback || questionCallback) return { approved: false, reason: "Concurrent native interaction unsupported by the pinned single-slot coordinator" };
++        approvalPreparation = { request, identity };
++        try { return await originalTool(request); } finally { approvalPreparation = undefined; }
++    };
++    const originalQuestion = native.handleAskQuestion.bind(native);
++    native.handleAskQuestion = async (text, choices, context) => {
++        const identity = hooks.identity();
++        if (disposed || !identity || approvalPreparation || questionPreparation || approvalCallback || questionCallback) throw new Error("Concurrent or unaddressable native question");
++        questionPreparation = { question: text, choices: [...(choices ?? [])], identity };
++        try { return await originalQuestion(text, choices, context); } finally { questionPreparation = undefined; }
++    };
++    const originalResolveTool = native.resolvePendingToolApproval.bind(native);
++    native.resolvePendingToolApproval = (prompt, choice, images, files) => {
++        const prev = response;
++        if (approval?.state === "pending" && choice !== "messageResponse") response = approval.interaction;
++        try { return originalResolveTool(prompt, choice, images, files); } finally { response = prev; }
++    };
++    const originalResolveQuestion = native.resolvePendingAskQuestion.bind(native);
++    native.resolvePendingAskQuestion = prompt => {
++        const prev = response;
++        if (question?.state === "pending") response = question.interaction;
++        try { return originalResolveQuestion(prompt); } finally { response = prev; }
++    };
++    const pending = (): NativeInteraction[] => [approval, question].filter((slot): slot is Slot => !!slot && slot.state === "pending" && sameIdentity(slot.identity, hooks.identity()))
++        .map(slot => structuredClone(slot.interaction));
++    return {
++        pending, responseId: () => response?.askId,
++        resolve(command: { askId: string; askRevision: number; decisionId: string; decision: "allow_once" | "deny" | "answer"; answer?: string }, permit: NativePermit, assertBinding: () => void): NativeControlReceipt {
++            const slot = [approval, question].find(value => value?.interaction.askId === command.askId);
++            const check = (): void => {
++                assertBinding();
++                if (disposed || !slot || slot.state !== "pending" || !sameIdentity(slot.identity, hooks.identity()) || slot.interaction.askRevision !== command.askRevision ||
++                    (fingerprint(slot.interaction) !== slot.material || (slot.liveMaterial && slot.liveMaterial() !== slot.material)) || Date.parse(slot.interaction.expiresAt) <= hooks.now() || !slot.interaction.complete ||
++                    (slot.interaction.kind === "approval" ? approvalCallback !== slot.callback || approvalMessage?.messageTs !== Number(slot.interaction.messageId) : questionCallback !== slot.callback)) throw new Error("REQUEST_STALE: exact native resolver/revision is no longer pending");
++                if (permit.signal.aborted) throw new Error("Control permit cancelled");
++            };
++            if (slot?.receipt && slot.receipt.decisionId === command.decisionId && slot.receipt.source === "remote") throw new Error("REQUEST_STALE: native decision already consumed; inspect recorded receipt");
++            check();
++            if (slot!.interaction.kind === "approval" ? !["allow_once", "deny"].includes(command.decision) : command.decision !== "answer" || typeof command.answer !== "string" || !command.answer.trim()) throw new Error("Unsupported native decision or empty question answer");
++            permit.assertAuthority(); check();
++            remote = { slot: slot!, decisionId: command.decisionId };
++            try {
++                const applied = slot!.interaction.kind === "approval" ? native.resolvePendingToolApproval(undefined, command.decision === "allow_once" ? "yesButtonClicked" : "noButtonClicked") : native.resolvePendingAskQuestion(command.answer);
++                if (!applied || !slot!.receipt || slot!.receipt.decisionId !== command.decisionId) throw new Error("EXECUTION_UNKNOWN: native resolver receipt unavailable");
++                return structuredClone(slot!.receipt);
++            } finally { remote = undefined; }
++        },
++        dispose(): void { disposed = true; }
++    };
++}
+--- /dev/null
++++ b/apps/vscode/src/exports/sdc-native-api.ts
+@@ -0,0 +1,51 @@
++/** The app-owned M19 API. Stock Cline does not export this interface. */
++export interface NativeContext {
++    installationId: string; hostId: string; windowId: string; workspaceId: string;
++    taskId: string; generation: string;
++}
++export interface NativeMessage {
++    id: string; type: "ask" | "say"; category: string; text: string; partial: boolean;
++    imageChecksums?: string[];
++}
++export interface NativeSnapshot {
++    context: NativeContext; conversationRevision: number; phase: string;
++    ready: boolean; isRunning?: boolean; messages: NativeMessage[]; cursor: number;
++    pending?: NativeInteraction[]; nativeTurnId?: string;
++    autoApproval?: Record<string, boolean>;
++}
++export interface NativeInteraction {
++    askId: string; askRevision: number; taskId: string; nativeTurnId: string;
++    kind: "approval" | "question"; messageId: string; expiresAt: string;
++    toolCallId?: string; toolName?: string; input?: unknown; cwd?: string; preview?: string;
++    question?: string; choices?: string[]; complete: boolean;
++}
++export interface NativeControlReceipt {
++    askId: string; askRevision: number; taskId: string; nativeTurnId: string;
++    outcome: "allowed" | "denied" | "answered" | "dismissed";
++    source: "local" | "remote"; decisionId?: string; evidence: string;
++}
++export interface NativeControlsApi {
++    resolve(token: string, command: { askId: string; askRevision: number; decisionId: string; decision: "allow_once" | "deny" | "answer"; answer?: string }, permit: NativePermit): NativeControlReceipt;
++    cancel(token: string, nativeTurnId: string, permit: NativePermit): Promise<{ nativeTurnId: string; taskId: string; evidence: string }>;
++}
++export type NativeEvent =
++    | { seq: number; type: "message"; message: NativeMessage; local: boolean; commandId?: string; interactionId?: string }
++    | { seq: number; type: "phase"; phase: string; isRunning?: boolean }
++    | { seq: number; type: "interaction"; interaction: NativeInteraction }
++    | { seq: number; type: "resolved"; receipt: NativeControlReceipt }
++    | { seq: number; type: "cancelled"; nativeTurnId: string; evidence: string }
++    | { seq: number; type: "invalidated"; reason: string };
++export interface NativePermit { signal: AbortSignal; assertAuthority(): void }
++export interface NativeBridgeApi {
++    apiVersion: "1.0" | "1.1"; clineVersion: "4.1.22";
++    controls?: NativeControlsApi;
++    context(): Omit<NativeContext, "taskId" | "generation">;
++    currentTask(): { taskId: string; ready: boolean } | undefined;
++    bind(expected: Omit<NativeContext, "generation">): { token: string; snapshot: NativeSnapshot };
++    snapshot(token: string): NativeSnapshot;
++    subscribe(token: string, cursor: number, listener: (event: NativeEvent) => void): () => void;
++    submit(token: string, command: { commandId: string; text: string; attachmentIds: string[]; expectedConversationRevision: number }, permit: NativePermit): Promise<{ messageId: string; imageChecksums: string[] }>;
++    stageImage(token: string, reference: { attachmentId: string; mimeType: string; sizeBytes: number; sha256: string }, bytes: Uint8Array, permit: NativePermit): { receiptId: string; attachmentId: string; mimeType: string; sizeBytes: number; sha256: string };
++    detach(token: string): void;
++    dispose(): void;
++}
+--- /dev/null
++++ b/apps/vscode/src/exports/sdc-native-patch.ts
+@@ -0,0 +1,266 @@
++import { createHash, randomUUID } from "node:crypto";
++import type { NativeBridgeApi, NativeContext, NativeEvent, NativeMessage, NativeSnapshot } from "./sdc-native-api";
++import { instrumentInteractions } from "./sdc-native-controls";
++import type { PinnedInteractions } from "./sdc-native-controls";
++
++interface ClineMessage {
++    ts: number; type: "ask" | "say"; say?: string; ask?: string; text?: string; partial?: boolean; images?: string[];
++}
++interface Task {
++    taskId: string;
++    messageStateHandler: { getClineMessages(): ClineMessage[]; on(name: string, listener: () => void): unknown; off(name: string, listener: () => void): unknown };
++}
++interface ActiveSession { sessionId: string; isRunning: boolean; sdkHost: object & { abort?(sessionId: string): Promise<void> } }
++/** Structural boundary to the exact pinned native Controller, inside the maintained Cline patch.
++ * This module is installed in Cline's package, never called by the companion on stock internals. */
++export interface PinnedController {
++    task?: Task;
++    sessions: { getActiveSession(): ActiveSession | undefined; setRunning(running: boolean): void; fireAndForgetSend(host: object, sessionId: string, text: string, images: string[]): void };
++    turnStateTracker: { currentPhase: string; set(phase: string): void };
++    messages: { appendAndEmit(messages: ClineMessage[], event: object): void };
++    messageTranslatorState: { clearTurnOutcome(): void };
++    resolveContextMentions(text: string): Promise<string>;
++    resetMessageTranslatorAndFence(): void;
++    postStateToWebview(): Promise<void>;
++    dispose(): Promise<void>;
++    interactions?: PinnedInteractions;
++    taskControl?: { options: { raiseCancelFence?: () => void } };
++    stateManager?: { getGlobalSettingsKey(key: string): unknown };
++}
++export interface NativeEnvironment {
++    installationId: string; hostId: string; windowId: string;
++    workspaceId(): string;
++    onWorkspaceChanged(listener: () => void): { dispose(): void };
++    remote: boolean;
++    controls?: boolean;
++}
++const hash = (bytes: string | Uint8Array): string => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
++const project = (message: ClineMessage): NativeMessage => ({ id: String(message.ts), type: message.type,
++    category: message.say ?? message.ask ?? "unknown", text: message.text ?? "", partial: message.partial === true,
++    ...(message.images?.length ? { imageChecksums: message.images.map(image => hash(Buffer.from(image.split(",").at(-1) ?? "", "base64"))) } : {}) });
++interface BoundTask {
++    token: string; task: Task; context: NativeContext; revision: number; seq: number;
++    events: NativeEvent[]; listeners: Set<(event: NativeEvent) => void>; messages: Map<string, NativeMessage>;
++    phase: string; isRunning?: boolean; valid: boolean; messageListener: () => void;
++    commands: Map<string, { digest: string; result: Promise<{ messageId: string; imageChecksums: string[] }> }>;
++    images: Map<string, { data: string; reference: { attachmentId: string; mimeType: string; sizeBytes: number; sha256: string }; receiptId: string }>;
++    remoteMessages: Map<string, string>;
++    imageBytes: number;
++}
++
++/** Native patch for Cline 4.1.22 only. No model runtime or private transport is created. */
++export function createClineTaskBridge(controller: PinnedController, env: NativeEnvironment): NativeBridgeApi {
++    if (env.remote) throw new Error("Remote extension hosts are unsupported by this pinned M19 patch");
++    if (!controller.sessions?.getActiveSession || !controller.messages?.appendAndEmit || !controller.turnStateTracker ||
++        !controller.resolveContextMentions || !controller.resetMessageTranslatorAndFence) throw new Error("Pinned Cline controller shape mismatch");
++    const descriptor = Object.getOwnPropertyDescriptor(controller, "task");
++    if (!descriptor || !descriptor.configurable || !("value" in descriptor)) throw new Error("Pinned Cline task field shape mismatch");
++    const tasks = new Map<string, BoundTask>();
++    let currentTask = controller.task;
++    let disposed = false;
++    const context = (): Omit<NativeContext, "taskId" | "generation"> => ({ installationId: env.installationId, hostId: env.hostId, windowId: env.windowId, workspaceId: env.workspaceId() });
++    const emit = (bound: BoundTask, value: NativeEvent extends infer E ? E extends NativeEvent ? Omit<E, "seq"> : never : never): void => {
++        const event = { ...value, seq: ++bound.seq } as NativeEvent;
++        bound.events.push(event); if (bound.events.length > 512) bound.events.shift();
++        for (const listener of [...bound.listeners]) { try { listener(structuredClone(event)); } catch { /* One consumer cannot corrupt native state. */ } }
++    };
++    const invalidate = (bound: BoundTask, reason: string): void => {
++        if (!bound.valid) return;
++        bound.valid = false; bound.task.messageStateHandler.off("clineMessagesChanged", bound.messageListener);
++        bound.images.clear(); bound.imageBytes = 0;
++        emit(bound, { type: "invalidated", reason }); bound.listeners.clear();
++        tasks.delete(bound.token);
++    };
++    const invalidateAll = (reason: string): void => { for (const bound of tasks.values()) invalidate(bound, reason); };
++    Object.defineProperty(controller, "task", { configurable: true, enumerable: true,
++        get: () => currentTask, set: (task: Task | undefined) => { invalidateAll("Cline task selection or proxy changed"); currentTask = task; } });
++    const get = (token: string): BoundTask => {
++        const bound = tasks.get(token);
++        if (disposed || !bound?.valid || controller.task !== bound.task || controller.task.taskId !== bound.context.taskId || env.workspaceId() !== bound.context.workspaceId)
++            throw new Error("BINDING_CHANGED: native task, host generation, or workspace changed; select again");
++        return bound;
++    };
++    const ready = (task: Task): boolean => {
++        const session = controller.sessions.getActiveSession();
++        return !!session && session.sessionId === task.taskId && !session.isRunning && ["idle", "completed", "awaiting_followup"].includes(controller.turnStateTracker.currentPhase);
++    };
++    const responseMessages = new Set<number>();
++    const nativeIdentity = () => {
++        const task = controller.task, session = controller.sessions.getActiveSession();
++        if (!task || !session || session.sessionId !== task.taskId) return undefined;
++        const message = task.messageStateHandler.getClineMessages().filter(value => value.type === "say" && ["task", "user_feedback"].includes(value.say ?? "") && !responseMessages.has(value.ts)).at(-1);
++        return message ? { task, session, taskId: task.taskId, nativeTurnId: `${task.taskId}:${message.ts}` } : undefined;
++    };
++    const controlEvent = (event: NativeEvent extends infer E ? E extends NativeEvent ? Omit<E, "seq"> : never : never): void => {
++        for (const bound of tasks.values()) if (bound.valid) emit(bound, event);
++    };
++    if (env.controls && !controller.interactions) throw new Error("Pinned native interactions unavailable");
++    const controls = env.controls ? instrumentInteractions(controller.interactions!, {
++        identity: nativeIdentity,
++        anchor: () => (controller.turnStateTracker as typeof controller.turnStateTracker & { get(): { anchorTs?: number } }).get().anchorTs,
++        preview: id => controller.task?.messageStateHandler.getClineMessages().find(message => String(message.ts) === id)?.text,
++        pending: interaction => controlEvent({ type: "interaction", interaction }),
++        resolved: receipt => controlEvent({ type: "resolved", receipt }), now: () => Date.now()
++    }) : undefined;
++    if (controls) {
++        if (!controller.taskControl?.options.raiseCancelFence) throw new Error("Pinned native cancellation fence unavailable");
++        const append = controller.messages.appendAndEmit.bind(controller.messages);
++        controller.messages.appendAndEmit = (messages, event) => {
++            if (controls.responseId()) for (const message of messages) if (message.type === "say" && message.say === "user_feedback") responseMessages.add(message.ts);
++            append(messages, event);
++        };
++    }
++    const refresh = (bound: BoundTask): void => {
++        if (!bound.valid) return;
++        get(bound.token);
++        const messages = bound.task.messageStateHandler.getClineMessages().map(project);
++        const ids = new Set(messages.map(message => message.id));
++        if ([...bound.messages.keys()].some(id => !ids.has(id))) { invalidate(bound, "Native transcript replaced or truncated; select again"); return; }
++        for (const message of messages) {
++            const before = bound.messages.get(message.id);
++            if (JSON.stringify(before) === JSON.stringify(message)) continue;
++            const user = !before && message.type === "say" && ["task", "user_feedback"].includes(message.category);
++            const commandId = bound.remoteMessages.get(message.id);
++            if (user) ++bound.revision;
++            const interactionId = controls?.responseId();
++            bound.messages.set(message.id, message); emit(bound, { type: "message", message, local: user && !commandId && !interactionId, ...(commandId ? { commandId } : {}), ...(user && interactionId ? { interactionId } : {}) });
++        }
++        const phase = controller.turnStateTracker.currentPhase;
++        const isRunning = controller.sessions.getActiveSession()?.isRunning;
++        if (bound.phase !== phase || (controls && bound.isRunning !== isRunning)) { bound.phase = phase; bound.isRunning = isRunning; emit(bound, { type: "phase", phase, ...(controls ? { isRunning } : {}) }); }
++    };
++    const snapshot = (bound: BoundTask): NativeSnapshot => {
++        refresh(bound); get(bound.token);
++        return { context: structuredClone(bound.context), conversationRevision: bound.revision, phase: bound.phase,
++            ready: ready(bound.task), messages: structuredClone([...bound.messages.values()]), cursor: bound.seq,
++            ...(controls ? { pending: controls.pending(), isRunning: controller.sessions.getActiveSession()?.isRunning, nativeTurnId: nativeIdentity()?.nativeTurnId, autoApproval: autoApproval() } : {}) };
++    };
++    const autoApproval = (): Record<string, boolean> => {
++        const value = controller.stateManager?.getGlobalSettingsKey("autoApprovalSettings") as { enabled?: boolean; actions?: Record<string, boolean> } | undefined;
++        return value ? { enabled: value.enabled === true, ...Object.fromEntries(Object.entries(value.actions ?? {}).filter(([key, flag]) => /^[a-zA-Z]+$/.test(key) && typeof flag === "boolean")) } : {};
++    };
++    const watcher = env.onWorkspaceChanged(() => invalidateAll("Workspace configuration changed"));
++    const timer = setInterval(() => {
++        for (const bound of tasks.values()) if (bound.valid) { try { refresh(bound); } catch { invalidate(bound, "Native context changed"); } }
++    }, 50); timer.unref();
++    const originalDispose = controller.dispose.bind(controller);
++    const api: NativeBridgeApi = {
++        apiVersion: controls ? "1.1" : "1.0", clineVersion: "4.1.22", context,
++        ...(controls ? { controls: {
++            resolve: (token, command, permit) => controls.resolve(command, permit, () => { get(token); }),
++            cancel: async (token, nativeTurnId, permit) => {
++                const bound = get(token), identity = nativeIdentity();
++                const check = (): void => {
++                    get(token); const current = nativeIdentity();
++                    if (!identity || !current || current.task !== identity.task || current.session !== identity.session || current.nativeTurnId !== nativeTurnId || !controller.sessions.getActiveSession()?.isRunning || permit.signal.aborted) throw new Error("REQUEST_STALE: addressed native turn is not running");
++                };
++                check(); permit.assertAuthority(); check();
++                const session = identity!.session as ActiveSession;
++                if (!session.sdkHost.abort) throw new Error("Pinned native SDK abort unavailable");
++                controller.turnStateTracker.set("resumable");
++                controller.taskControl!.options.raiseCancelFence!();
++                controller.interactions!.clearPending("Task cancelled by addressed bridge control");
++                // The captured native host/session is used even if the sidebar switches while abort awaits.
++                try { await session.sdkHost.abort(session.sessionId); }
++                catch (error) { if (!(error instanceof Error) || error.name !== "AbortError") throw new Error("EXECUTION_UNKNOWN: native abort acknowledgement failed"); }
++                try { get(token); } catch { throw new Error("EXECUTION_UNKNOWN: binding changed after native abort; reconcile without replay"); }
++                if (controller.sessions.getActiveSession() !== session || nativeIdentity()?.nativeTurnId !== nativeTurnId) throw new Error("EXECUTION_UNKNOWN: native turn changed during abort; reconcile without replay");
++                controller.sessions.setRunning(false);
++                const ts = bound.task.messageStateHandler.getClineMessages().reduce((max, message) => Math.max(max, message.ts + 1), Date.now());
++                controller.messages.appendAndEmit([{ ts, type: "ask", ask: "resume_task", text: "", partial: false }], { type: "status", payload: { sessionId: session.sessionId, status: "cancelled" } });
++                const evidence = `Native SDK abort acknowledged for ${nativeTurnId}; resume_task ${ts} observed`;
++                emit(bound, { type: "cancelled", nativeTurnId, evidence });
++                void controller.postStateToWebview().catch(() => {});
++                return { nativeTurnId, taskId: session.sessionId, evidence };
++            }
++        } } : {}),
++        currentTask: () => !disposed && controller.task ? { taskId: controller.task.taskId, ready: ready(controller.task) } : undefined,
++        bind: (expected) => {
++            const task = controller.task;
++            const actual = task ? { ...context(), taskId: task.taskId } : undefined;
++            if (disposed || !task || !actual || Object.keys(actual).some(key => expected[key as keyof typeof actual] !== actual[key as keyof typeof actual]))
++                throw new Error("BINDING_CHANGED: explicit native context does not match");
++            if ([...tasks.values()].some(bound => bound.valid)) throw new Error("A task is already bound in this host; disconnect first");
++            const token = randomUUID();
++            const messages = task.messageStateHandler.getClineMessages().map(project);
++            const bound: BoundTask = { token, task, context: { ...context(), taskId: task.taskId, generation: randomUUID() },
++                revision: messages.filter(message => message.type === "say" && ["task", "user_feedback"].includes(message.category)).length,
++                seq: 0, events: [], listeners: new Set(), messages: new Map(messages.map(message => [message.id, message])),
++                phase: controller.turnStateTracker.currentPhase, valid: true, commands: new Map(), images: new Map(), remoteMessages: new Map(), imageBytes: 0,
++                messageListener: () => { try { refresh(bound); } catch { invalidate(bound, "Native context changed"); } } };
++            tasks.set(token, bound); task.messageStateHandler.on("clineMessagesChanged", bound.messageListener);
++            return { token, snapshot: snapshot(bound) };
++        },
++        snapshot: token => snapshot(get(token)),
++        subscribe: (token, cursor, listener) => {
++            const bound = get(token); refresh(bound);
++            if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > bound.seq || (bound.events.length && cursor < bound.events[0].seq - 1)) throw new Error("CURSOR_EXPIRED: native snapshot required");
++            bound.listeners.add(listener);
++            for (const event of bound.events.filter(event => event.seq > cursor)) listener(structuredClone(event));
++            return () => { bound.listeners.delete(listener); };
++        },
++        submit: async (token, command, permit) => {
++            const bound = get(token);
++            const digest = hash(JSON.stringify(command));
++            const previous = bound.commands.get(command.commandId);
++            if (previous) { if (previous.digest !== digest) throw new Error("CONFLICT: command ID reused with different content"); return previous.result; }
++            if (bound.commands.size >= 256) throw new Error("Native command receipt limit reached; disconnect and reconcile before rebinding");
++            if (!command.text.trim() && !command.attachmentIds.length) throw new Error("Empty prompt");
++            const images = command.attachmentIds.map(id => { const image = bound.images.get(id); if (!image) throw new Error("Attachment not staged in this binding"); return image; });
++            const session = controller.sessions.getActiveSession();
++            if (!session || !ready(bound.task) || command.expectedConversationRevision !== bound.revision) throw new Error("Task is busy, unavailable, or conversation revision changed");
++            const result = (async () => {
++                // Prepare context with the app's normal resolver. Nothing is echoed or sent yet.
++                const resolved = await controller.resolveContextMentions(command.text);
++                get(token);
++                if (controller.sessions.getActiveSession() !== session || !ready(bound.task) || command.expectedConversationRevision !== bound.revision) throw new Error("BINDING_CHANGED: native session or input state changed during preparation");
++                if (permit.signal.aborted) throw new Error("Dispatch cancelled before native submission");
++                permit.assertAuthority();
++                get(token);
++                if (permit.signal.aborted || controller.sessions.getActiveSession() !== session || !ready(bound.task) || command.expectedConversationRevision !== bound.revision)
++                    throw new Error("BINDING_CHANGED: native session, permit, or input state changed at authority check");
++                // All effect-boundary checks and the addressed send are synchronous in this turn.
++                controller.sessions.setRunning(true); controller.turnStateTracker.set("streaming");
++                controller.messageTranslatorState.clearTurnOutcome(); controller.resetMessageTranslatorAndFence();
++                const ts = bound.task.messageStateHandler.getClineMessages().reduce((value, message) => Math.max(value, message.ts + 1), Date.now());
++                const data = images.map(image => image.data);
++                bound.remoteMessages.set(String(ts), command.commandId);
++                controller.messages.appendAndEmit([{ ts, type: "say", say: "user_feedback", text: command.text, images: data, partial: false }], { type: "status", payload: { sessionId: session.sessionId, status: "running" } });
++                const echo = bound.task.messageStateHandler.getClineMessages().find(message => message.ts === ts);
++                if (!echo || echo.text !== command.text || JSON.stringify(echo.images) !== JSON.stringify(data)) throw new Error("EXECUTION_UNKNOWN: native user-message echo could not be confirmed");
++                try {
++                    get(token); if (controller.sessions.getActiveSession() !== session || permit.signal.aborted) throw new Error("Session or permit changed during echo");
++                    permit.assertAuthority(); get(token);
++                    if (controller.sessions.getActiveSession() !== session || permit.signal.aborted) throw new Error("Session or permit changed at final authority check");
++                }
++                catch { throw new Error("EXECUTION_UNKNOWN: native echo exists but dispatch was fenced before execution"); }
++                controller.sessions.fireAndForgetSend(session.sdkHost, session.sessionId, resolved, data);
++                void controller.postStateToWebview().catch(() => {});
++                return { messageId: String(ts), imageChecksums: images.map(image => image.reference.sha256) };
++            })();
++            bound.commands.set(command.commandId, { digest, result });
++            return result;
++        },
++        stageImage: (token, reference, bytes, permit) => {
++            const bound = get(token);
++            if (!["image/png", "image/jpeg"].includes(reference.mimeType)) throw new Error("Unsupported attachment type; this patch supports PNG/JPEG images only");
++            if (bytes.byteLength !== reference.sizeBytes || hash(bytes) !== reference.sha256 || reference.sizeBytes > 10 * 1024 * 1024) throw new Error("Attachment size or checksum mismatch");
++            const png = [137,80,78,71,13,10,26,10].every((value, index) => bytes[index] === value);
++            const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
++            if (!(reference.mimeType === "image/png" ? png : jpeg)) throw new Error("Image signature mismatch");
++            const prior = bound.images.get(reference.attachmentId);
++            if (prior && JSON.stringify(prior.reference) !== JSON.stringify(reference)) throw new Error("Attachment ID conflict");
++            if (!prior && bound.imageBytes + bytes.byteLength > 10 * 1024 * 1024) throw new Error("Binding image staging limit exceeded");
++            if (permit.signal.aborted) throw new Error("Image staging cancelled");
++            permit.assertAuthority();
++            get(token);
++            if (permit.signal.aborted) throw new Error("Image staging cancelled at authority check");
++            if (!prior) { bound.imageBytes += bytes.byteLength; bound.images.set(reference.attachmentId, { data: `data:${reference.mimeType};base64,${Buffer.from(bytes).toString("base64")}`, reference: structuredClone(reference), receiptId: randomUUID() }); }
++            return { ...structuredClone(reference), receiptId: bound.images.get(reference.attachmentId)!.receiptId };
++        },
++        detach: token => { const bound = tasks.get(token); if (bound) { invalidate(bound, "Detached locally"); tasks.delete(token); } },
++        dispose: () => { if (disposed) return; disposed = true; controls?.dispose(); clearInterval(timer); watcher.dispose(); invalidateAll("Cline extension controller disposed"); tasks.clear(); }
++    };
++    controller.dispose = async () => { api.dispose(); await originalDispose(); };
++    return api;
++}
+--- /dev/null
++++ b/apps/vscode/src/exports/sdc-native-entry.ts
+@@ -0,0 +1,19 @@
++import * as vscode from "vscode";
++import { createHash, randomUUID } from "node:crypto";
++import { createClineTaskBridge } from "./sdc-native-patch";
++import type { PinnedController } from "./sdc-native-patch";
++
++/** Loaded inside the explicitly pinned Cline application package, not in the companion. */
++export function createPinnedClineApi(controller: unknown): ReturnType<typeof createClineTaskBridge> | undefined {
++    if (vscode.env.remoteName) return undefined;
++    const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
++    const location = vscode.extensions.getExtension("saoudrizwan.claude-dev")?.extensionUri.toString();
++    if (!location) throw new Error("Cline installation identity unavailable");
++    return createClineTaskBridge(controller as PinnedController, {
++        installationId: `cline:${digest(`${vscode.env.machineId}:${location}`)}`,
++        hostId: `extension-host:${randomUUID()}`,
++        windowId: `vscode-session:${vscode.env.sessionId}`,
++        workspaceId: () => `workspace:${digest(JSON.stringify((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.toString()).sort()))}`,
++        onWorkspaceChanged: listener => vscode.workspace.onDidChangeWorkspaceFolders(listener), remote: false, controls: true
++    });
++}

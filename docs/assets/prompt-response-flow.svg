@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1440" viewBox="0 0 1440 1440" role="img" aria-labelledby="title description">
+<title id="title">From prompt to recorded response</title><desc id="description">Sequence diagram with six participants: user, API client, FastAPI gateway, TypeScript server, desktop bridge and Cline. Steps show prompt submission, authentication and request identity, server persistence, SSE delivery, local authority checks, native execution, acknowledgements and persisted output returned to the caller.</desc>
+<defs>
+ <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#345de3"/></marker>
+ <marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#087e83"/></marker>
+ <marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#50627a"/></marker>
+</defs>
+<rect width="1440" height="1440" rx="24" fill="#f5f7fc"/>
+<rect x="0" y="0" width="1440" height="130" rx="24" fill="#172b46"/>
+<rect x="0" y="90" width="1440" height="40" fill="#172b46"/>
+
+<text x="44" y="35" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#a9c3f7" text-anchor="start">SERVER-DRIVEN CHAT  /  SYSTEM DESIGN</text>
+<text x="44" y="75" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#ffffff" text-anchor="start">From prompt to recorded response</text>
+<text x="44" y="105" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="400" fill="#d3deef" text-anchor="start">An API request travels through durable admission, native execution and correlated events.</text>
+<rect x="44" y="151" width="1352" height="50" rx="10" fill="#eaf5f4" stroke="#bfdedb"/>
+<text x="64" y="183" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#087e83" text-anchor="start">PRECONDITION</text>
+<text x="195" y="183" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" fill="#172b46" text-anchor="start">Graphical sign-in, pairing, task selection and local consent are already complete.</text>
+<path d="M 130 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="39" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="130" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">User</text>
+<text x="130" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">Human</text>
+<path d="M 366 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="275" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="366" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">API client</text>
+<text x="366" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">REST / SDK</text>
+<path d="M 602 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="511" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="602" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">Gateway</text>
+<text x="602" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">FastAPI</text>
+<path d="M 838 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="747" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="838" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">Server</text>
+<text x="838" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">TypeScript</text>
+<path d="M 1074 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="983" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="1074" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">Bridge</text>
+<text x="1074" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">Desktop</text>
+<path d="M 1310 304 V 1300" stroke="#c6d1e2" stroke-width="1.5" stroke-dasharray="5 7"/>
+<rect x="1219" y="224" width="182" height="80" rx="14" fill="#ffffff" stroke="#cad7ef"/>
+<text x="1310" y="256" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#172b46" text-anchor="middle">Cline task</text>
+<text x="1310" y="282" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="middle">Native app</text>
+<rect x="44" y="325" width="1352" height="34" rx="7" fill="#e8edf6" stroke="#e8edf6"/>
+<text x="62" y="348" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#345de3" text-anchor="start">01  ADMIT THE REQUEST</text>
+<path d="M 130 399 H 366" fill="none" stroke="#345de3" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="188.95" y="369" width="118.10000000000001" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="248.0" y="386" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#345de3" text-anchor="middle">Submit prompt</text>
+<circle cx="113" cy="399" r="12" fill="#345de3"/>
+<text x="113" y="403" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<path d="M 366 463 H 602" fill="none" stroke="#345de3" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="386.45" y="433" width="195.1" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="484.0" y="450" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#345de3" text-anchor="middle">Auth + request identity</text>
+<circle cx="349" cy="463" r="12" fill="#345de3"/>
+<text x="349" y="467" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<path d="M 602 527 H 838" fill="none" stroke="#345de3" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="630.15" y="497" width="179.70000000000002" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="720.0" y="514" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#345de3" text-anchor="middle">Normalize and forward</text>
+<circle cx="585" cy="527" r="12" fill="#345de3"/>
+<text x="585" y="531" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<rect x="733" y="552" width="210" height="62" rx="9" fill="#eef1fe" stroke="#cbd5f6"/>
+<text x="838" y="577" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Check scope and readiness</text>
+<text x="838" y="599" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Persist durable operation</text>
+<rect x="44" y="644" width="1352" height="34" rx="7" fill="#e8edf6" stroke="#e8edf6"/>
+<text x="62" y="667" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#345de3" text-anchor="start">02  DELIVER AND EXECUTE</text>
+<path d="M 838 718 H 1074" fill="none" stroke="#345de3" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="885.4" y="688" width="141.2" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="956.0" y="705" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#345de3" text-anchor="middle">Command over SSE</text>
+<circle cx="821" cy="718" r="12" fill="#345de3"/>
+<text x="821" y="722" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<rect x="969" y="743" width="210" height="62" rx="9" fill="#eef1fe" stroke="#cbd5f6"/>
+<text x="1074" y="768" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Persist local receipt</text>
+<text x="1074" y="790" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Check current authority</text>
+<path d="M 1074 851 H 1310" fill="none" stroke="#345de3" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="1121.4" y="821" width="141.2" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="1192.0" y="838" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#345de3" text-anchor="middle">Native API input</text>
+<circle cx="1057" cy="851" r="12" fill="#345de3"/>
+<text x="1057" y="855" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<path d="M 1310 923 H 1074" fill="none" stroke="#087e83" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#teal)" stroke-dasharray="7 6"/>
+<rect x="1132.95" y="893" width="118.10000000000001" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="1192.0" y="910" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#087e83" text-anchor="middle">Native events</text>
+<circle cx="1327" cy="923" r="12" fill="#087e83"/>
+<text x="1327" y="927" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<text x="1290" y="957" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="end">Output, question, approval</text>
+<text x="1290" y="979" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="400" fill="#50627a" text-anchor="end">request or terminal event</text>
+<rect x="44" y="1003" width="1352" height="34" rx="7" fill="#e8edf6" stroke="#e8edf6"/>
+<text x="62" y="1026" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#087e83" text-anchor="start">03  RECORD AND RETURN</text>
+<path d="M 1074 1080 H 838" fill="none" stroke="#087e83" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#teal)" stroke-dasharray="7 6"/>
+<rect x="862.3" y="1050" width="187.4" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="956.0" y="1067" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#087e83" text-anchor="middle">POST receipts + events</text>
+<circle cx="1091" cy="1080" r="12" fill="#087e83"/>
+<text x="1091" y="1084" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+<rect x="733" y="1103" width="210" height="62" rx="9" fill="#eef1fe" stroke="#cbd5f6"/>
+<text x="838" y="1128" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Persist events</text>
+<text x="838" y="1150" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#172b46" text-anchor="middle">Update operation state</text>
+<path d="M 838 1210 H 602" fill="none" stroke="#087e83" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#teal)" stroke-dasharray="7 6"/>
+<rect x="630.15" y="1180" width="179.70000000000002" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="720.0" y="1197" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#087e83" text-anchor="middle">Result / event stream</text>
+<circle cx="855" cy="1210" r="12" fill="#087e83"/>
+<text x="855" y="1214" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">8</text>
+<path d="M 602 1254 H 366" fill="none" stroke="#087e83" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#teal)" stroke-dasharray="7 6"/>
+<rect x="390.3" y="1224" width="187.4" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="484.0" y="1241" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#087e83" text-anchor="middle">Profile response / SSE</text>
+<circle cx="619" cy="1254" r="12" fill="#087e83"/>
+<text x="619" y="1258" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">9</text>
+<path d="M 366 1298 H 130" fill="none" stroke="#087e83" stroke-width="2.3" stroke-linejoin="round" marker-end="url(#teal)" stroke-dasharray="7 6"/>
+<rect x="154.3" y="1268" width="187.4" height="25" rx="6" fill="#f5f7fc" stroke="#f5f7fc"/>
+<text x="248.0" y="1285" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#087e83" text-anchor="middle">Display result + state</text>
+<circle cx="383" cy="1298" r="12" fill="#087e83"/>
+<text x="383" y="1302" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">10</text>
+<rect x="44" y="1340" width="1352" height="70" rx="12" fill="#ffffff" stroke="#d8e0ef"/>
+<text x="66" y="1368" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#345de3" text-anchor="start">ACCEPTED ≠ COMPLETED</text>
+<text x="300" y="1368" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="400" fill="#172b46" text-anchor="start">HTTP admission records work; native events establish its outcome.</text>
+<text x="66" y="1394" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="400" fill="#50627a" text-anchor="start">Provider streams return committed output using the profile’s buffering rules. Local permissions remain authoritative.</text>
+</svg>

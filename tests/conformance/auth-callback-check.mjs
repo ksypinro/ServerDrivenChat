@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {get} from 'node:http';
+import {registerHooks} from 'node:module';
+registerHooks({resolve(specifier,context,next){return specifier==='vscode'?{url:new URL('./mock-vscode.mjs',import.meta.url).href,shortCircuit:true}:next(specifier,context);}});
+const host=await import('./mock-vscode.mjs');
+const {createConnectUi}=await import('../../extensions/vscode/dist/connect-ui.mjs');
+const profile={id:'p',name:'p',origin:'https://server.invalid',categories:['prompts']};let start=0,exchanges=0,stores=0,exchange;
+globalThis.fetch=async(url,init)=>{const path=new URL(url).pathname;if(path.endsWith('/start')){assert.equal(JSON.parse(init.body).redirectUri,'http://127.0.0.1:15945/callback','isolated desktop callback must return to the initiating extension host');return Response.json({state:`state-${++start}`,authorizationUrl:'http://127.0.0.1/authorize'});}if(path.endsWith('/exchange')){exchanges++;if(exchange)return exchange();return Response.json({userId:'owner',accessToken:'test',expiresAt:new Date(Date.now()+60000).toISOString()});}return new Response('fixture pairing reached',{status:500});};
+const context={subscriptions:[],globalState:{get:()=>[],setKeysForSync(){}},secrets:{get:async()=>undefined,store:async()=>{stores++;}}};
+const make=()=>createConnectUi(context,()=>{});
+const request=abort=>({origin:{taskId:'task'},signal:abort.signal,assertCurrent(){if(abort.signal.aborted)throw Error('cancelled');}});
+const tick=()=>new Promise(r=>setImmediate(r));
+const callback=(state,code='code')=>new Promise((resolve,reject)=>get(`http://127.0.0.1:15945/callback?${new URLSearchParams({state,code})}`,response=>{response.resume();response.on('end',resolve);}).on('error',error=>error.code==='ECONNREFUSED'?resolve():reject(error)));
+let ui=make(),abort=new AbortController();host.setOpen(async()=>false);
+await assert.rejects(ui.ui.pair(profile,request(abort)),/cancelled/);await assert.rejects(ui.ui.pair(profile,request(abort)),/cancelled/);assert.equal(start,2,'failed external opening releases auth slot');
+host.setOpen(async()=>true);let work=ui.ui.pair(profile,request(abort));await tick();const cancelledState=`state-${start}`;abort.abort();await assert.rejects(work,/cancelled/);await callback(cancelledState);assert.equal(exchanges,0,'late callback after abort ignored');
+abort=new AbortController();work=ui.ui.pair(profile,request(abort));await tick();const current=`state-${start}`;await callback('wrong-state');await callback(current,'');assert.equal(exchanges,0);const pairingFailure=assert.rejects(work,/Server request failed/);await callback(current);await pairingFailure;await callback(current);assert.equal(exchanges,1,'valid state exchanged once');assert.equal(stores,1);
+// Cancellation during exchange must prevent credential caching, even when an HTTP response arrives late.
+let release,entered;const ready=new Promise(r=>entered=r);exchange=()=>{entered();return new Promise(r=>release=r);};
+abort=new AbortController();work=ui.ui.pair(profile,request(abort));await tick();const exchangeState=`state-${start}`;const handling=callback(exchangeState);await ready;abort.abort();await assert.rejects(work,/cancelled/);release(Response.json({userId:'owner',accessToken:'late',expiresAt:new Date(Date.now()+60000).toISOString()}));await handling;assert.equal(stores,1);
+exchange=undefined;abort=new AbortController();work=ui.ui.pair(profile,request(abort));await tick();const disposedState=`state-${start}`;ui.dispose();await assert.rejects(work,/Host closing/);await callback(disposedState);assert.equal(exchanges,2,'disposed callback ignored');
+console.log(JSON.stringify({passed:true,checks:['loopback callback binding','external-open failure cleanup','cancelled callback ignored','state and code validation','one-time exchange','exchange cancellation prevents cache','dispose cleanup']}));

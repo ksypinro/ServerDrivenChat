@@ -1,0 +1,14 @@
+{
+  "name": "partial-replaced-complete",
+  "script": [
+    { "type": "partial", "text": "draft" },
+    { "type": "replace", "text": "final answer" },
+    { "type": "complete" }
+  ],
+  "expectedEventTypes": [
+    "turn.started",
+    "output.item.created",
+    "output.item.replaced",
+    "turn.completed"
+  ]
+}

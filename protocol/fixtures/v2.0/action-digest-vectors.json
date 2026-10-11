@@ -1,0 +1,43 @@
+[
+  {
+    "name": "action identity, argument order, set-normalized choices/permissions, and artifact checksums",
+    "input": {
+      "appId": "sample-app",
+      "appInstanceId": "install-7",
+      "bindingId": "binding-3",
+      "sessionId": "session-9",
+      "nativeConversationId": "conversation-2",
+      "bindingRevision": 3,
+      "leaseGeneration": 8,
+      "turnId": "turn-4",
+      "nativeTurnId": "native-turn-4",
+      "requestId": "approval-8",
+      "nativeRequestId": "native-request-8",
+      "requestRevision": 2,
+      "action": {
+        "tool": "file.write",
+        "arguments": { "path": "/workspace/a.txt", "content": "ok" },
+        "workingDirectory": "/workspace",
+        "command": ["write", "a.txt"],
+        "environmentChanges": { "B": "2", "A": "1" },
+        "attachmentChecksums": [
+          { "attachmentId": "z", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+          { "attachmentId": "a", "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        ],
+        "artifactChecksums": [
+          { "artifactId": "diff-2", "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          { "artifactId": "diff-1", "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111" }
+        ]
+      },
+      "requestedPermissions": [
+        { "resource": "filesystem", "operation": "write", "scope": { "path": "/workspace/b" } },
+        { "resource": "filesystem", "operation": "write", "scope": { "path": "/workspace/a" } }
+      ],
+      "availableDecisions": [
+        { "id": "deny", "effect": "deny", "scope": "action" },
+        { "id": "allow", "effect": "allow", "scope": "action" }
+      ]
+    },
+    "actionDigest": "sha256:fb305482c1f6cedcab7d6e460ac3da6ede8d3d46ae95d8066ff6ba69ea80872c"
+  }
+]

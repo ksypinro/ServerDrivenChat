@@ -1,0 +1,12 @@
+.git
+.aider.chat.history.md
+node_modules
+**/node_modules
+**/dist
+**/.build
+**/.swiftpm
+**/.venv
+**/__pycache__
+**/.pytest_cache
+evidence
+.codex

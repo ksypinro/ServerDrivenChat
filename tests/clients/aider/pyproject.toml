@@ -1,0 +1,8 @@
+[project]
+name = "sdc-m30-aider-consumer"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["aider-chat==0.86.2"]
+
+[tool.uv]
+package = false

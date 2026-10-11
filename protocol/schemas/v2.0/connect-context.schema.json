@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://server-driven-chat.invalid/schemas/connect-context-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "installationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "hostId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "windowId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "toolInvocationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    }
+  },
+  "required": [
+    "installationId",
+    "hostId",
+    "windowId",
+    "workspaceId",
+    "taskId",
+    "toolInvocationId"
+  ],
+  "additionalProperties": false
+}

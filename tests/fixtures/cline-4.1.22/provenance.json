@@ -1,0 +1,6 @@
+{
+  "commit": "f58bc118bdeef1bd2813cd08e00d98bdcda96475",
+  "url": "https://raw.githubusercontent.com/cline/cline/f58bc118bdeef1bd2813cd08e00d98bdcda96475/apps/vscode/src/sdk/sdk-interaction-coordinator.ts",
+  "sha256": "283e900006de3934880b0524fcb9242103760f21a4c676575335c5771bd6113f",
+  "license": "Apache-2.0; exact upstream source retained for concurrency tests. UI/message translator dependencies are stubbed."
+}

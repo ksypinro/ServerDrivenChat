@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://server-driven-chat.invalid/schemas/connect-tools-v1.schema.json",
+  "title": "Bounded local bridge Connect and disconnect tool contract",
+  "$defs": {
+    "ConnectInput": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "const": "bridge.connect"
+        },
+        "serverProfileId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "displayLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "operation",
+        "serverProfileId"
+      ],
+      "additionalProperties": false
+    },
+    "DisconnectInput": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "const": "bridge.disconnect"
+        },
+        "scope": {
+          "const": "current-binding"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "operation",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "TrustedConnectContext": {
+      "type": "object",
+      "properties": {
+        "installationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "hostId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "windowId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "toolInvocationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        }
+      },
+      "required": [
+        "installationId",
+        "hostId",
+        "windowId",
+        "workspaceId",
+        "taskId",
+        "toolInvocationId"
+      ],
+      "additionalProperties": false
+    },
+    "ConnectToolResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://server-driven-chat.invalid/schemas/connect-result-v1.schema.json",
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "connected",
+            "already_connected",
+            "pending_local_confirmation",
+            "disconnected",
+            "no_connection",
+            "rejected"
+          ]
+        },
+        "displayMessage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        }
+      },
+      "required": [
+        "status",
+        "displayMessage"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ConnectInput"
+    },
+    {
+      "$ref": "#/$defs/DisconnectInput"
+    }
+  ]
+}

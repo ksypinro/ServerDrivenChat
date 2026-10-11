@@ -1,0 +1,21 @@
+{
+  "name": "control-suspended-turn-keeps-prompt-queued",
+  "firstTurnId": "turn-1",
+  "queuedTurnId": "turn-2",
+  "script": [
+    { "type": "input", "requestId": "input-1", "requestRevision": 2, "question": "Choose one" },
+    { "type": "complete", "text": "queued answer" }
+  ],
+  "answer": "choice-a",
+  "expectedEventTypes": [
+    "turn.started",
+    "input.required",
+    "input.resolved",
+    "turn.state",
+    "turn.completed",
+    "turn.started",
+    "output.item.created",
+    "output.item.completed",
+    "turn.completed"
+  ]
+}

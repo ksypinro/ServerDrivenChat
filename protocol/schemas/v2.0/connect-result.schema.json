@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://server-driven-chat.invalid/schemas/connect-result-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "status": {
+      "enum": [
+        "connected",
+        "already_connected",
+        "pending_local_confirmation",
+        "disconnected",
+        "no_connection",
+        "rejected"
+      ]
+    },
+    "displayMessage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "connectionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    }
+  },
+  "required": [
+    "status",
+    "displayMessage"
+  ],
+  "additionalProperties": false
+}

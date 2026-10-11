@@ -1,0 +1,31 @@
+{
+  "milestone": "M30",
+  "status": "disposable-native-accepted",
+  "baseVersion": "4.1.22",
+  "patchedVersion": "4.1.2204",
+  "apiVersion": "1.3",
+  "companionVersion": "0.7.0",
+  "originalBundleSha256": "369bfc6bd01de72d26013ed6ebac2c7c9cb5a564bb8ff14679d6a1ba2ab76178",
+  "patchedBundleSha256": "8da2f0506aacc06906d81783cd9ad540b93f68fdc64606d2c5e77b15d2ef1f29",
+  "nativeAddonSha256": "81bc1d836ba694910ea895fa63902d9b9272bca6ef547591e56d8c910bf4da72",
+  "companionBundleSha256": "dedb0185b612e423bf5cbb8b6588a5784087c475290e75f7cb91cc6dbcf50a70",
+  "packages": [
+    {
+      "path": "/Users/samin/Documents/ServerDrivenChat/extensions/vscode/dist/cline-4.1.22-sdc-m30.1.vsix",
+      "sha256": "07b06ec7feb7e82104457042c2b2c75bd7b0232845a62f7d1f5802bc5e16a1b6"
+    },
+    {
+      "path": "/Users/samin/Documents/ServerDrivenChat/extensions/vscode/dist/sdc-cline-bridge-0.7.0.vsix",
+      "sha256": "907236972384418ee5e2d7c3637818f118f92c05ced79fed8a2e9da08c037936"
+    }
+  ],
+  "nativeSource": "adapters/cline/src/native-patch.ts and native-controls.ts",
+  "historicalNativePackagePreserved": "evidence/M21/artifact-manifest.json",
+  "signing": "Unsigned disposable candidate; M24 owns distribution",
+  "nativeAcceptance": [
+    "evidence/M30/native-tool-run/native-tool-denial.json",
+    "evidence/M30/native-tool-run/native-recovery.json",
+    "evidence/M30/native-tool-run/native-takeover.json"
+  ],
+  "scope": "Exact unsigned local API 1.3 candidate and companion 0.7.0 in isolated VS Code development host; M24 owns signing and distribution."
+}
