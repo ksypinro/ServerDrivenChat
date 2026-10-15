@@ -1,0 +1,90 @@
+{
+  "schema": "sdc-cline-surface-v1",
+  "source": {
+    "publisher": "saoudrizwan",
+    "name": "claude-dev",
+    "version": "4.1.22",
+    "bundleSha256": "369bfc6bd01de72d26013ed6ebac2c7c9cb5a564bb8ff14679d6a1ba2ab76178"
+  },
+  "anchor": {
+    "matches": 1,
+    "bodyHash": "b01bec5bc542331e",
+    "callSites": 1
+  },
+  "methods": {
+    "resolveContextMentions": [
+      "b1a2d2271b5cef1a"
+    ],
+    "resetMessageTranslatorAndFence": [
+      "4219ff98c7a85594"
+    ],
+    "postStateToWebview": [
+      "0cbb28ac8359b125"
+    ],
+    "getActiveSession": [
+      "b87e57d9b3ae70a9"
+    ],
+    "setRunning": [
+      "11a1e17b8ad8b668"
+    ],
+    "fireAndForgetSend": [
+      "67b64600b4304a1e"
+    ],
+    "startNewSession": [
+      "339dea30ef8486c6"
+    ],
+    "appendAndEmit": [
+      "1caba6efdcdb12ab"
+    ],
+    "clearTurnOutcome": [
+      "8bafb19561bb4986"
+    ],
+    "getClineMessages": [
+      "8495f5a337373492",
+      "ef3abe49eede50c7"
+    ],
+    "getGlobalSettingsKey": [
+      "55d8dc668265c72c"
+    ],
+    "handleRequestToolApproval": [
+      "f9ace32e797aa26c"
+    ],
+    "handleAskQuestion": [
+      "406efd60c26e57a7"
+    ],
+    "resolvePendingToolApproval": [
+      "63a11b8a99b2ff81"
+    ],
+    "resolvePendingAskQuestion": [
+      "2160576abfdf50b2"
+    ],
+    "clearPending": [
+      "355bf9a283fd5ee2"
+    ]
+  },
+  "properties": {
+    "sessions": 204,
+    "turnStateTracker": 24,
+    "messageTranslatorState": 26,
+    "interactions": 57,
+    "taskControl": 6,
+    "stateManager": 315,
+    "messageStateHandler": 19,
+    "currentPhase": 3,
+    "raiseCancelFence": 1,
+    "sdkHost": 15,
+    "anchorTs": 2,
+    "pendingAskResolve": 6,
+    "pendingToolApprovalResolve": 7,
+    "pendingToolApprovalMessage": 5
+  },
+  "literals": {
+    "clineMessagesChanged": 3,
+    "awaiting_followup": 3,
+    "resumable": 6,
+    "streaming": 48,
+    "user_feedback": 11,
+    "resume_task": 7,
+    "autoApprovalSettings": 14
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "sdc-cline-reviewed-changes-v1",
+  "description": "Normalized method fingerprints that differ from the 4.1.22 baseline but were reviewed against the SDC native add-on. Each entry names the upstream source reviewed and the add-on change or test covering it. Static review only; native acceptance remains separate.",
+  "methods": {
+    "handleRequestToolApproval": [
+      {
+        "definitions": ["62b6caf5e1960a7e"],
+        "since": "4.1.23",
+        "upstream": "cline/cline@afaf4f2457ae467f2e0c8f4c9407967373e34569 apps/vscode/src/sdk/sdk-interaction-coordinator.ts",
+        "review": "Resolver and message are registered before the display post; a failed post denies only that approval. adapters/cline/src/native-controls.ts applies the same native deny (APPROVAL_DISPLAY_FAILED) because its resolver wrapper defeats the native identity check. Covered by tests/cline-4.1.23-controls.test.mjs."
+      }
+    ],
+    "clearPending": [
+      {
+        "definitions": ["8520f7dea8c63317"],
+        "since": "4.1.23",
+        "upstream": "cline/cline@afaf4f2457ae467f2e0c8f4c9407967373e34569 apps/vscode/src/sdk/sdk-interaction-coordinator.ts",
+        "review": "Approval denial moved into denyPendingToolApproval with the same record-then-resolve behavior; it reads the wrapped resolver, so add-on receipts still settle. Covered by tests/cline-4.1.23-controls.test.mjs."
+      }
+    ],
+    "denyPendingToolApproval": [
+      {
+        "definitions": ["96f019f9cde950ef"],
+        "since": "4.1.23",
+        "upstream": "cline/cline@afaf4f2457ae467f2e0c8f4c9407967373e34569 apps/vscode/src/sdk/sdk-interaction-coordinator.ts",
+        "review": "New helper: clears the resolver and message, records the denial, then resolves approved=false. Used by the add-on's display-failure handling. Covered by tests/cline-4.1.23-controls.test.mjs."
+      }
+    ]
+  }
+}

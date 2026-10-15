@@ -13,8 +13,12 @@ export interface PinnedInteractions {
     resolvePendingToolApproval(prompt: string | undefined, response: string | undefined, images?: string[], files?: string[]): boolean;
     resolvePendingAskQuestion(prompt: string | undefined): boolean;
     clearPending(reason: string): void;
-    options: { getCwd?: () => string | undefined };
+    /** Present from Cline 4.1.23, where approvals are registered before their display is posted. */
+    denyPendingToolApproval?(reason: string): boolean;
+    options: { getCwd?: () => string | undefined; postStateToWebview?: () => Promise<void>; setTurnPhase?: (phase: string) => void };
 }
+/** Cline 4.1.23 `TOOL_APPROVAL_DELIVERY_FAILED_REASON`. */
+const APPROVAL_DISPLAY_FAILED = "The tool approval request could not be displayed, so the tool was not executed.";
 interface Identity { task: object; session: object; taskId: string; nativeTurnId: string }
 interface Slot {
     interaction: NativeInteraction; identity: Identity; callback: object;
@@ -101,11 +105,31 @@ export function instrumentInteractions(native: PinnedInteractions, hooks: {
                     toolCallId: request.toolCallId, toolName: request.toolName, input, preview: hooks.preview(String(approvalMessage.messageTs)) ?? "", complete,
                     ...(native.options.getCwd?.() ? { cwd: native.options.getCwd() } : {}) });
                 const baseline = fingerprint([request.toolCallId, request.toolName, request.input, native.options.getCwd?.(), hooks.preview(captured.interaction.messageId)]);
+                approvalDisplay = captured;
                 captured.liveMaterial = () => { try { jsonClone(request.input); return fingerprint([request.toolCallId, request.toolName, request.input, native.options.getCwd?.(), hooks.preview(captured!.interaction.messageId)]) === baseline ? captured!.material : "changed"; } catch { return "changed"; } };
                 hooks.pending(structuredClone(captured.interaction));
             };
         } });
     let captureApproval: (() => void) | undefined;
+    // Cline 4.1.23+ registers the approval resolver, then posts the display and denies that approval if
+    // the post fails, but only while the field still holds its own resolver. The field holds the wrapper
+    // above, so the native check never matches; apply the same native deny here, for that approval only.
+    let approvalDisplay: Slot | undefined;
+    if (typeof native.denyPendingToolApproval === "function") {
+        const post = native.options.postStateToWebview, field = Object.getOwnPropertyDescriptor(native.options, "postStateToWebview");
+        if (typeof post !== "function" || !field?.writable) throw new Error("Pinned native approval display hook mismatch");
+        const displayFailed = (slot: Slot | undefined): void => {
+            if (slot?.state === "pending" && approval === slot && approvalCallback === slot.callback && native.denyPendingToolApproval!(APPROVAL_DISPLAY_FAILED))
+                native.options.setTurnPhase?.("streaming");
+        };
+        native.options.postStateToWebview = () => {
+            // The first post after an approval is registered is that approval's own display.
+            const slot = approvalDisplay; approvalDisplay = undefined;
+            let posted: Promise<void>;
+            try { posted = post.call(native.options); } catch (error) { displayFailed(slot); throw error; }
+            return Promise.resolve(posted).catch((error: unknown) => { displayFailed(slot); throw error; });
+        };
+    }
     Object.defineProperty(native, "pendingToolApprovalMessage", { configurable: true, enumerable: true,
         get: () => approvalMessage, set: (message: PinnedInteractions["pendingToolApprovalMessage"]) => { approvalMessage = message; if (message) captureApproval?.(); } });
     Object.defineProperty(native, "pendingAskResolve", { configurable: true, enumerable: true,

@@ -1,0 +1,7 @@
+{
+  "commit": "afaf4f2457ae467f2e0c8f4c9407967373e34569",
+  "tag": "v4.1.23",
+  "url": "https://raw.githubusercontent.com/cline/cline/afaf4f2457ae467f2e0c8f4c9407967373e34569/apps/vscode/src/sdk/sdk-interaction-coordinator.ts",
+  "sha256": "38df5d51ab17e58e4402f3b3561325c071c074d01fbdf40c744fa1669d85570e",
+  "license": "Apache-2.0; exact upstream source retained for approval-display tests. UI/message translator dependencies are stubbed."
+}
