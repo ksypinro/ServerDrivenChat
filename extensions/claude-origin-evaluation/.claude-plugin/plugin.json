@@ -1,0 +1,6 @@
+{
+    "name": "sdc-origin-probe",
+    "version": "0.1.0",
+    "description": "Bounded MB-05 Mod-origin prompt refusal evaluation; not a driver.",
+    "author": { "name": "Server-Driven Chat contributors" }
+}

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { readFile } from "node:fs/promises";
-import { assertReviewedClinePin } from "./pin.js";
+import { assertReviewedClinePin, isReviewedClineManifest } from "./pin.js";
 import { createHash, randomUUID } from "node:crypto";
 import { ClineAppAdapter } from "@server-driven-chat/adapter-cline";
 import type { NativeBridgeApi } from "@server-driven-chat/adapter-cline";
@@ -38,7 +38,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ getA
             status.tooltip = target ? `Task ${target.binding.nativeConversationId}; native app permissions still apply` : "Configure a server and connect the current task";
             status.command = "sdcCline.connectionStatus";
         }
-    });
+    }, { onRemoteMaintenance: key => {
+        if (!connectManager?.usesProfile(key)) return;
+        void disconnect();
+        void vscode.window.showInformationMessage("Server credentials for this window's profile are being removed in another VS Code window. Remote control stopped here.");
+    } });
     context.subscriptions.push({ dispose: connectUi.dispose });
     context.subscriptions.push(vscode.commands.registerCommand("sdcCline.configureServer", connectUi.configure));
     context.subscriptions.push(vscode.commands.registerCommand("sdcCline.forgetCredentials", async () => {
@@ -49,6 +53,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ getA
             });
         } catch (error) { void vscode.window.showErrorMessage(errorText(error)); }
     }));
+    context.subscriptions.push(vscode.commands.registerCommand("sdcCline.showConnections", async () => {
+        try { await connectUi.connections(connectManager?.current?.binding.bindingId); } catch (error) { void vscode.window.showErrorMessage(errorText(error)); }
+    }));
     context.subscriptions.push(vscode.commands.registerCommand("sdcCline.connectionStatus", () => {
         void vscode.window.showInformationMessage(`Cline bridge: ${connectManager?.state ?? "disconnected"}${active ? ` · task ${active.binding.nativeConversationId}` : ""}`, "Disconnect", "Configure server").then(choice => {
             if (choice === "Disconnect") void disconnect();
@@ -57,7 +64,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ getA
     }));
     try {
         const cline = vscode.extensions.getExtension<{ serverDrivenChat?: NativeBridgeApi }>("saoudrizwan.claude-dev");
-        if (cline && [3, 4].includes(cline.packageJSON.sdcPatch?.revision)) {
+        if (cline && isReviewedClineManifest(cline.packageJSON)) {
             await verifyNativePin(cline);
             const api = (await cline.activate()).serverDrivenChat;
             if (!api?.connect || !["1.2", "1.3"].includes(api.apiVersion)) throw new Error("Requires the exact app-owned API 1.2 or M30 candidate API 1.3");
@@ -87,7 +94,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ getA
         try {
             if (vscode.env.remoteName) throw new Error("This M19 package supports local VS Code only. Remote hosts require separate validation.");
             const cline = vscode.extensions.getExtension<{ serverDrivenChat?: NativeBridgeApi }>("saoudrizwan.claude-dev");
-            if (!cline || cline.packageJSON.sdcPatch?.baseVersion !== "4.1.22" || ![2, 3, 4].includes(cline.packageJSON.sdcPatch?.revision)) throw new Error("Requires an exact Cline 4.1.22 API patch");
+            if (!cline || !isReviewedClineManifest(cline.packageJSON)) throw new Error("Requires an exact reviewed Cline API patch");
             await verifyNativePin(cline);
             const api = (await cline.activate()).serverDrivenChat;
             if (!api) throw new Error("Stock Cline lacks the required task-bound API. Install the reviewed Cline patch package first.");

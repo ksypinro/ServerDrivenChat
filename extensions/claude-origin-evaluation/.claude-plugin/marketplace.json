@@ -1,0 +1,6 @@
+{
+    "name": "sdc-origin-evaluation",
+    "owner": { "name": "Server-Driven Chat contributors" },
+    "metadata": { "description": "Local bounded MB-05 attributed-prompt refusal diagnostics." },
+    "plugins": [{ "name": "sdc-origin-probe", "source": "./", "version": "0.1.0" }]
+}

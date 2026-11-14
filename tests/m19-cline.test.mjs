@@ -6,7 +6,7 @@ import { ClineAppAdapter, createClineTaskBridge } from "../adapters/cline/dist/i
 import { validateProtocolMessage } from "../protocol/dist/index.js";
 
 // Native controller fixtures test the patch boundary only; they do not prove live Cline support.
-function fixture() {
+function fixture(nativeScopeId) {
     let workspace = "workspace-A", workspaceListener;
     const sent = [];
     const task = taskFixture("task-A");
@@ -18,13 +18,20 @@ function fixture() {
     messages: { appendAndEmit: messages => { for (const message of messages) controller.task.messageStateHandler.add(message); } },
     messageTranslatorState: { clearTurnOutcome() {} }, resolveContextMentions: async text => text,
     resetMessageTranslatorAndFence() {}, postStateToWebview: async () => {}, dispose: async () => {} };
-    const api = createClineTaskBridge(controller, { installationId: "installation", hostId: "host", windowId: "window", workspaceId: () => workspace,
+    const api = createClineTaskBridge(controller, { installationId: "installation", hostId: "host", windowId: "window", ...(nativeScopeId ? { nativeScopeId } : {}), workspaceId: () => workspace,
         onWorkspaceChanged: callback => { workspaceListener = callback; return { dispose() { workspaceListener = undefined; } }; }, remote: false });
     const select = () => api.bind({ ...api.context(), taskId: controller.task.taskId });
     const change = (id = "task-B") => { controller.task = taskFixture(id); session = { sessionId: id, isRunning: false, sdkHost: {} }; };
     const complete = () => { controller.task.messageStateHandler.add({ ts: Date.now() + 5, type: "say", say: "text", text: "native reply", partial: false }); session.isRunning = false; controller.turnStateTracker.set("completed"); };
     return { api, controller, sent, select, change, complete, workspace: value => { workspace = value; workspaceListener?.(); } };
 }
+
+test("MI-04 native context carries the configured scope through binding", t => {
+    const f = fixture("cline-data:test"); t.after(() => f.api.dispose());
+    assert.equal(f.api.context().nativeScopeId, "cline-data:test");
+    assert.throws(() => f.api.bind({ ...f.api.context(), nativeScopeId: "other", taskId: "task-A" }), /BINDING_CHANGED/);
+    assert.equal(f.select().snapshot.context.nativeScopeId, "cline-data:test");
+});
 function taskFixture(taskId) {
     const handler = new EventEmitter(); handler.messages = [{ ts: 1, type: "say", say: "task", text: "original task", secret: "must not export", providerConfig: { apiKey: "must not export" } }];
     handler.getClineMessages = () => structuredClone(handler.messages);

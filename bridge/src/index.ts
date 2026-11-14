@@ -9,4 +9,6 @@ export type { AttemptState, BridgeLane, CommandInput, DispatchState, FaultPoint,
 export { BridgeRuntime, parseSse, reconnectDelay } from "./runtime/index.js";
 export type { BridgeRuntimeOptions, BridgeRuntimeState } from "./runtime/index.js";
 export { createApprovalDecisionHandler } from "./approvals/index.js";
+export { acquireExclusiveLock, acquireSharedLock, isLockHeld, LockTimeoutError, tryExclusiveLock, trySharedLock } from "./locks/index.js";
+export type { HeldLock, LockWaitOptions } from "./locks/index.js";
 export type { ApprovalHandlerOptions } from "./approvals/index.js";

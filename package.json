@@ -14,7 +14,9 @@
     "adapters/fake",
     "control-ui",
     "adapters/cline",
-    "extensions/vscode"
+    "extensions/vscode",
+    "extensions/vscode-host",
+    "extensions/vscode-drivers/cline"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -37,6 +39,8 @@
     "test:m22": "npm run build && node --test tests/m22-workflow.test.mjs tests/m11-13-acceptance.test.mjs tests/m20-cline.test.mjs tests/m21-binding.test.mjs",
     "test:m27": "npm run build && node --test tests/m27-public-api.test.mjs tests/m27-server-policy.test.mjs",
     "test:m29": "npm run build && node --test tests/m29-server-policy.test.mjs",
+    "test:mi01": "npm run build --workspace @server-driven-chat/protocol --workspace @server-driven-chat/server && node --test tests/mi01-multi-binding.test.mjs",
+    "test:mi02": "npm run build && node --test tests/mi02-units.test.mjs tests/mi02-multi-window.test.mjs",
     "test:m23": "npm run build && node --test tests/conformance/*.test.mjs tests/repair-*.test.mjs tests/m19-cline.test.mjs tests/m20-cline.test.mjs tests/m21-connect.test.mjs tests/m21-binding.test.mjs tests/m22-workflow.test.mjs"
   },
   "devDependencies": {

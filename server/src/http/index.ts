@@ -10,7 +10,7 @@ import type { ApprovalEngine } from "../approvals/index.js";
 import { createPublicKey, type KeyObject } from "node:crypto";
 import type { AttachmentService } from "../attachments/index.js";
 import { DeviceLeaseService } from "../leases/index.js";
-import { StorageCapacityError, StorageConflictError, StorageNotFoundError, type BindingFence, type Lane, type ServerDatabase } from "../storage/index.js";
+import { NativeConversationBoundError, StorageCapacityError, StorageConflictError, StorageNotFoundError, type BindingFence, type Lane, type ServerDatabase } from "../storage/index.js";
 
 import { createPublicApiHandler } from "../public-api/http.js";
 import { ConversationService } from "../public-api/conversations.js";
@@ -21,6 +21,8 @@ const MAX_SSE_CONNECTIONS = 128;
 const HEARTBEAT_MS = 15_000;
 const POLL_MS = 350;
 const CURSOR = /^(0|[1-9][0-9]{0,15})$/;
+/** Optional registration behavior advertised by `GET /v2/health`; clients send a field only when it is listed. */
+export const SERVER_FEATURES = Object.freeze(["binding.nativeScope", "binding.display", "binding.takeover", "binding.laneWatermarks", "binding.continuity"] as const);
 const CONTROL_UI_ROOT = resolve(fileURLToPath(new URL("../../../control-ui/dist/", import.meta.url)));
 const STATIC_TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2" };
 
@@ -33,8 +35,12 @@ export interface ApiServerOptions {
     maxSseConnections?: number;
     maxBodyBytes?: number;
     leaseTtlSeconds?: number;
+    /** Pending commands per device lane, counting only sessions with an active binding. */
     maxPendingPrompts?: number;
     maxPendingControls?: number;
+    /** Pending commands per session, so one busy binding cannot fill a shared device's lanes. */
+    maxPendingPromptsPerSession?: number;
+    maxPendingControlsPerSession?: number;
     approvalEngine?: ApprovalEngine;
     decisionPublicKey?: KeyObject | string;
     attachments?: AttachmentService;
@@ -53,11 +59,13 @@ export function createApiServer(options: ApiServerOptions): Server {
     const maxSseConnections = options.maxSseConnections ?? MAX_SSE_CONNECTIONS;
     const maxBodyBytes = options.maxBodyBytes ?? MAX_BODY_BYTES;
     const leases = new DeviceLeaseService(options.database, options.authorization, { ttlSeconds: options.leaseTtlSeconds });
-    const promptLimit = options.maxPendingPrompts ?? 100;
-    const controlLimit = options.maxPendingControls ?? 1000;
+    const promptLimit = options.maxPendingPrompts ?? 1000;
+    const controlLimit = options.maxPendingControls ?? 2000;
+    const sessionPromptLimit = options.maxPendingPromptsPerSession ?? 100;
+    const sessionControlLimit = options.maxPendingControlsPerSession ?? 1000;
     let activeStreams = 0;
     const oidcAttempts = new Map<string,{redirectUri:string;nonce:string;codeVerifier:string;expiresAt:number}>();
-    if (![heartbeatMs, pollMs, maxSseConnections, maxBodyBytes, promptLimit, controlLimit].every(Number.isSafeInteger) || heartbeatMs < 100 || pollMs < 25 || maxSseConnections < 1 || maxBodyBytes < 1024 || promptLimit < 1 || controlLimit < 1)
+    if (![heartbeatMs, pollMs, maxSseConnections, maxBodyBytes, promptLimit, controlLimit, sessionPromptLimit, sessionControlLimit].every(Number.isSafeInteger) || heartbeatMs < 100 || pollMs < 25 || maxSseConnections < 1 || maxBodyBytes < 1024 || promptLimit < 1 || controlLimit < 1 || sessionPromptLimit < 1 || sessionControlLimit < 1)
         throw new RangeError("API limits must be safe positive integers");
 
     const publicHandler = createPublicApiHandler(options,{readJson,sendJson,authenticateUser,maxBodyBytes});
@@ -98,7 +106,7 @@ export function createApiServer(options: ApiServerOptions): Server {
             await serveControlUi(url.pathname, res); return;
         }
         if (req.method === "GET" && url.pathname === "/v2/health") {
-            sendJson(res, 200, { version: 2, requestId }); return;
+            sendJson(res, 200, { version: 2, requestId, features: SERVER_FEATURES }); return;
         }
         if(req.method==="POST" && url.pathname==="/v2/auth/oidc/start") {
             const body=asObject(await readJson(req,maxBodyBytes));
@@ -153,7 +161,17 @@ export function createApiServer(options: ApiServerOptions): Server {
             const result = await options.database.pool.query<{ session_id: string; state: string; role: "owner" | "operator" | "viewer"; binding_id: string | null; device_id: string | null; binding_revision: number | null; lease_generation: number | null; binding_state: string | null; lease_expires_at: Date | null; binding_payload: unknown }>(
                 "SELECT s.session_id,s.state,CASE WHEN s.owner_user_id=$1 THEN 'owner' ELSE m.role END AS role,b.binding_id,b.device_id,b.binding_revision,b.lease_generation,b.state AS binding_state,b.lease_expires_at,b.payload AS binding_payload FROM sessions s LEFT JOIN session_memberships m ON m.session_id=s.session_id AND m.user_id=$1 LEFT JOIN LATERAL (SELECT binding_id,device_id,binding_revision,lease_generation,state,lease_expires_at,payload FROM bindings WHERE session_id=s.session_id ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END,created_at DESC LIMIT 1) b ON true WHERE s.owner_user_id=$1 OR m.user_id=$1 ORDER BY s.created_at DESC",
                 [user.userId]);
-            sendJson(res,200,{sessions:result.rows.map(row=>({sessionId:row.session_id,state:row.state,role:row.role,binding:row.binding_id?{bindingId:row.binding_id,deviceId:row.device_id,bindingRevision:row.binding_revision,leaseGeneration:row.lease_generation,state:row.binding_state,leaseExpiresAt:row.lease_expires_at?.toISOString(),payload:row.binding_payload}:null}))}); return;
+            // Count only sessions visible to this user; labels are never workspace identity.
+            const workspace = (payload: unknown): unknown => {
+                if (!payload || typeof payload !== "object") return undefined;
+                const data = payload as Record<string, unknown>;
+                const identity = data.binding && typeof data.binding === "object" ? data.binding as Record<string, unknown> : data;
+                return identity.workspaceId;
+            };
+            const live = (row: typeof result.rows[number]): boolean => row.state === "active" && row.binding_state === "active" && Boolean(row.lease_expires_at && row.lease_expires_at.getTime() > Date.now());
+            sendJson(res,200,{sessions:result.rows.map(row=>({sessionId:row.session_id,state:row.state,role:row.role,
+                workspaceOverlap: live(row) && typeof workspace(row.binding_payload) === "string" && workspace(row.binding_payload) !== "" && result.rows.some(other => other.session_id !== row.session_id && live(other) && workspace(other.binding_payload) === workspace(row.binding_payload)),
+                binding:row.binding_id?{bindingId:row.binding_id,deviceId:row.device_id,bindingRevision:row.binding_revision,leaseGeneration:row.lease_generation,state:row.binding_state,leaseExpiresAt:row.lease_expires_at?.toISOString(),payload:row.binding_payload}:null}))}); return;
         }
         if (req.method === "POST" && url.pathname === "/v2/attachments") {
             if (!options.attachments) throw new HttpError(501,"CAPABILITY_UNSUPPORTED","Attachment storage is not configured");
@@ -227,9 +245,11 @@ export function createApiServer(options: ApiServerOptions): Server {
             }
             const body = asObject(await readJson(req, maxBodyBytes));
             const binding = asObject(body.binding) as unknown as Binding;
-            await options.authorization.registerBinding(device, credential, binding, Number(body.conversationRevision), body.capabilities as import("@server-driven-chat/protocol").CapabilitiesDocument | undefined);
+            if (body.takeover !== undefined && typeof body.takeover !== "boolean") throw new HttpError(400, "INVALID_MESSAGE", "takeover must be a boolean");
+            const registration = await options.authorization.registerBinding(device, credential, binding, Number(body.conversationRevision), body.capabilities as import("@server-driven-chat/protocol").CapabilitiesDocument | undefined,
+                { takeover: body.takeover === true, continuity: body.continuity as boolean | undefined, display: body.display });
             const publicKey = options.decisionPublicKey ? (typeof options.decisionPublicKey === "string" ? createPublicKey(options.decisionPublicKey) : options.decisionPublicKey).export({ type: "spki", format: "pem" }).toString() : undefined;
-            sendJson(res, 201, { binding, ...(publicKey ? { decisionPublicKey: publicKey } : {}) }); return;
+            sendJson(res, 201, { binding: registration.binding ?? binding, laneWatermarks: registration.laneWatermarks, ...(registration.outputCheckpoint ? { outputCheckpoint: registration.outputCheckpoint } : {}), ...(registration.replacedBindingId ? { replacedBindingId: registration.replacedBindingId } : {}), ...(publicKey ? { decisionPublicKey: publicKey } : {}) }); return;
         }
         const leaseMatch = /^\/v2\/devices\/([^/]+)\/lease\/renew$/.exec(url.pathname);
         if (req.method === "POST" && leaseMatch) {
@@ -368,7 +388,7 @@ export function createApiServer(options: ApiServerOptions): Server {
             if (!isControl && command.type !== "turn.submit") throw new HttpError(400, "INVALID_MESSAGE", "Turn endpoint accepts turn.submit commands only");
             if (controlMatch && "turnId" in command && command.turnId !== decodeURIComponent(controlMatch[2])) throw new HttpError(400, "INVALID_MESSAGE", "Control turnId does not match the route");
             if (command.type === "turn.submit" && "promptId" in command && !command.promptId) throw new HttpError(400, "INVALID_MESSAGE", "promptId is required");
-            const stored = await options.database.recordCommand({ commandId: command.commandId, sessionId, deviceId: binding.deviceId, lane: command.lane, payload: command }, { userFence: {sessionId,userId: user.userId,permission: command.type === "approval.decide" ? "approve" : command.type === "session.disable" || command.type === "permission.revoke" ? "administer" : "prompt"}, fence: {deviceId: binding.deviceId, sessionId, bindingRevision: command.bindingRevision, leaseGeneration: command.leaseGeneration}, pendingLimit: command.lane === "prompt" ? promptLimit : controlLimit });
+            const stored = await options.database.recordCommand({ commandId: command.commandId, sessionId, deviceId: binding.deviceId, lane: command.lane, payload: command }, { userFence: {sessionId,userId: user.userId,permission: command.type === "approval.decide" ? "approve" : command.type === "session.disable" || command.type === "permission.revoke" ? "administer" : "prompt"}, fence: {deviceId: binding.deviceId, sessionId, bindingRevision: command.bindingRevision, leaseGeneration: command.leaseGeneration}, pendingLimit: command.lane === "prompt" ? promptLimit : controlLimit, sessionPendingLimit: command.lane === "prompt" ? sessionPromptLimit : sessionControlLimit });
             sendJson(res, 202, { commandId: stored.commandId, lane: stored.lane, laneSeq: stored.laneSeq, disposition: stored.disposition, durable: true }); return;
         }
         const eventMatch = /^\/v2\/devices\/([^/]+)\/events$/.exec(url.pathname);
@@ -508,6 +528,7 @@ class HttpError extends Error {
 function mapError(error: unknown): { status: number; code: string; message: string; retryable: boolean } {
     if (error instanceof HttpError) return error;
     if (error instanceof PublicApiError) return {...error,message:error.message,retryable:false};
+    if (error instanceof NativeConversationBoundError) return { status: 409, code: "CONVERSATION_BOUND_ELSEWHERE", message: error.message, retryable: false };
     if (error instanceof StorageCapacityError) return {status: 429,code: "QUEUE_FULL",message: error.message,retryable: true};
     if (error instanceof StorageConflictError) return { status: 409, code: "CONFLICT", message: error.message, retryable: false };
     if (error instanceof StorageNotFoundError) return { status: 404, code: "NOT_FOUND", message: error.message, retryable: false };

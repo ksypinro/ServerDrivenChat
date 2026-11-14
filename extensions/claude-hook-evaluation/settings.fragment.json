@@ -1,0 +1,17 @@
+{
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/usr/bin/python3",
+                        "args": ["${CLAUDE_PROJECT_DIR}/extensions/claude-hook-evaluation/guard.py"],
+                        "timeout": 1,
+                        "onFailure": "block"
+                    }
+                ]
+            }
+        ]
+    }
+}

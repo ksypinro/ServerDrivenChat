@@ -1,0 +1,16 @@
+{
+    "name": "sdc-queue-evaluation",
+    "owner": {
+        "name": "Server-Driven Chat contributors"
+    },
+    "metadata": {
+        "description": "Local one-shot MB-05 busy queue evaluation."
+    },
+    "plugins": [
+        {
+            "name": "sdc-queue-probe",
+            "source": "./",
+            "version": "0.1.0"
+        }
+    ]
+}

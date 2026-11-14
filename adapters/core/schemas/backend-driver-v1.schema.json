@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://server-driven-chat.invalid/backend-driver/1.0/descriptor",
+  "title": "Local backend driver descriptor 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "backendId", "driverId", "driverVersion", "appId", "displayName", "hostKind", "extensionIds"],
+  "properties": {
+    "contractVersion": { "const": "1.0" },
+    "backendId": { "$ref": "#/$defs/identity" },
+    "driverId": { "$ref": "#/$defs/identity" },
+    "driverVersion": { "type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$" },
+    "appId": { "$ref": "#/$defs/identity" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "\\S" },
+    "hostKind": { "const": "vscode-local" },
+    "extensionIds": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$" } }
+  },
+  "$defs": { "identity": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$" } }
+}

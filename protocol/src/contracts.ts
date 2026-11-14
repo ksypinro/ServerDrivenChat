@@ -19,6 +19,8 @@ export interface CapabilitiesDocument {
 export interface BindingSelection { appId: string; appInstanceId: string; accountId?: string; workspaceId?: string; conversationId: string }
 export interface Binding extends BindingSelection {
   bindingId: string; sessionId: string; nativeConversationId: string; bindingRevision: number; leaseGeneration: number; capabilitiesRevision: string;
+  /** Opaque namespace in which `nativeConversationId` is unique, such as one app data directory on one machine. Enables server-side single-binding exclusivity; omit when unknown. */
+  nativeScopeId?: string;
 }
 
 export interface TextContent { type: "text"; text: string }
@@ -93,6 +95,11 @@ export interface OutputItem {
   nativeCategory?: string;
 }
 export interface OutputDelta { itemId: string; turnId: string; baseRevision: number; revision: number; source: OutputItem["source"]; textDelta: string; observedAt: string }
+/** Bounded registration checkpoint: opaque output identity/digests, never conversation content or authority. */
+export interface BindingOutputCheckpoint {
+  bindingIds: string[];
+  items: Array<{ itemId: string; turnId: string; revision: number; partial: boolean; digest: string; kind: OutputItem["kind"]; nativeCategory?: string }>;
+}
 export interface EventPayloads {
   "command.received": { commandId: string; receivedAt: string };
   "command.rejected": { commandId: string; error: ProtocolError };
@@ -137,7 +144,7 @@ export interface ActionDigestInput {
 /** Connect tool arguments are model-visible; trusted origin arrives out-of-band from the host. */
 export interface BridgeConnectToolInput { serverProfileId: string; displayLabel?: string }
 export interface BridgeDisconnectToolInput { scope: "current-binding"; reason?: string }
-export interface TrustedConnectContext { installationId: string; hostId: string; windowId: string; workspaceId: string; taskId: string; toolInvocationId: string }
+export interface TrustedConnectContext { installationId: string; hostId: string; windowId: string; workspaceId: string; nativeScopeId?: string; taskId: string; toolInvocationId: string }
 export interface ConnectToolResult {
   status: "connected" | "already_connected" | "pending_local_confirmation" | "disconnected" | "no_connection" | "rejected";
   displayMessage: string; connectionId?: string;

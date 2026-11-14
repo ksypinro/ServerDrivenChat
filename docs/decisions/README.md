@@ -13,5 +13,7 @@ These choices establish M03's repository foundation. Future milestones consume t
 | [007 — Testing and distribution](007-testing-and-distribution.md) | Node test runner, XCTest, Cline VSIX/server first release; standalone macOS distribution deferred |
 | [008 — Cline-only first release](008-cline-first-release.md) | Codex M16–M18 deferred; active M23–M26 Cline/shared release gates |
 | [009 — FastAPI public API release amendment](009-fastapi-public-api.md) | Required first-party REST, OpenAI/Anthropic profiles and desktop contracts; append M27–M30 before packaging; planning only |
+| [010 — Server-owned API semantics](010-server-owned-api-semantics.md) | Server-owned history, tool validation, lineage and accounting behind neutral adapters |
+| [011 — Backend driver contract](011-backend-driver-contract.md) | Local contract 1.0, exact artifact qualification and capability intersection; wire 2.0 preserved |
 
 Framework versions used in future packages must be pinned exactly by their owning milestone against a fresh security/support check. M03 pins and locks only dependencies it actually installs. A version choice is not evidence that a feature or application integration exists.

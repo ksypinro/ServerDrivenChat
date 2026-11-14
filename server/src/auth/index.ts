@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, KeyObject, randomBytes, randomUUID, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
-import { canonicalJson, validateCapabilities, type CapabilitiesDocument, type Binding } from "@server-driven-chat/protocol";
-import { ServerDatabase, StorageConflictError, StorageNotFoundError } from "../storage/index.js";
+import { BINDING_DISPLAY_LABELS, MAX_DISPLAY_LABEL_LENGTH, UNSAFE_DISPLAY_LABEL_CHARACTERS, canonicalJson, validateCapabilities, TranscriptProjector, type ProtocolEvent, type BindingOutputCheckpoint, type BindingDisplay, type CapabilitiesDocument, type Binding } from "@server-driven-chat/protocol";
+import { NativeConversationBoundError, ServerDatabase, StorageConflictError, StorageNotFoundError } from "../storage/index.js";
 
 export const authModule = "server-auth" as const;
 export type SessionRole = "owner" | "operator" | "viewer";
@@ -215,6 +215,10 @@ async function stableUserId(issuer: string, subject: string): Promise<string> {
 
 export interface PairingStart { pairingId: string; deviceId: string; pairingCode: string; localConfirmationSecret: string; expiresAt: string }
 export interface DeviceCredential { deviceId: string; credential: string; expiresAt: string }
+export type { BindingDisplay };
+export interface BindingRegistrationOptions { takeover?: boolean; continuity?: boolean; display?: unknown }
+/** Device-lane heads read inside registration: every command of the new session has a later sequence. */
+export interface BindingRegistration { binding?: Binding; laneWatermarks: { prompt: number; control: number }; replacedBindingId?: string; outputCheckpoint?: BindingOutputCheckpoint }
 export interface DecisionAssertionClaims {
     typ: "sdc-decision-v1"; assertionId: string; decisionId: string; sessionId: string; deviceId: string; bindingId: string;
     bindingRevision: number; leaseGeneration: number; turnId: string; requestId: string; requestRevision: number; actionDigest: string;
@@ -222,6 +226,16 @@ export interface DecisionAssertionClaims {
 }
 
 const hashSecret = (value: string): string => createHash("sha256").update(value).digest("hex");
+const DISPLAY_LABELS: readonly string[] = BINDING_DISPLAY_LABELS;
+function bindingDisplay(value: unknown): BindingDisplay | undefined {
+    if (value === undefined) return undefined;
+    const entries = value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+    if (!entries.length || entries.some(([key, text]) => !DISPLAY_LABELS.includes(key) || typeof text !== "string" || !text.trim() || text.length > MAX_DISPLAY_LABEL_LENGTH || UNSAFE_DISPLAY_LABEL_CHARACTERS.test(text)))
+        throw new TypeError("Binding display labels must be 1–120 printable characters from the supported label set");
+    return Object.fromEntries(entries.map(([key, text]) => [key, String(text).trim()])) as BindingDisplay;
+}
+const nativeConversationKey = (binding: Binding): string | undefined => binding.nativeScopeId === undefined ? undefined :
+    `sha256:${createHash("sha256").update(canonicalJson({ appId: binding.appId, nativeScopeId: binding.nativeScopeId, nativeConversationId: binding.nativeConversationId })).digest("hex")}`;
 const isValidTokenLifetime = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 86_400;
 const base32 = (bytes: Buffer): string => {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -359,35 +373,98 @@ export class AuthorizationService {
         return principal;
     }
 
-    /** Device-owned registration; credentials and ownership are checked again inside the write transaction. */
-    async registerBinding(principal: DevicePrincipal, credential: string, binding: Binding, conversationRevision: number, capabilities?: CapabilitiesDocument): Promise<void> {
+    /** Device-owned registration; credentials and ownership are checked again inside the write transaction.
+     * A binding with `nativeScopeId` becomes the only live binding of its native conversation: an expired holder is
+     * marked stale, and a live holder is replaced only by explicit takeover from the same owner. */
+    async registerBinding(principal: DevicePrincipal, credential: string, binding: Binding, conversationRevision: number, capabilities?: CapabilitiesDocument, options: BindingRegistrationOptions = {}): Promise<BindingRegistration> {
         requireAuthenticatedDevice(principal);
         const fields = ["appId", "appInstanceId", "bindingId", "sessionId", "nativeConversationId", "conversationId", "capabilitiesRevision"] as const;
         if (!binding || typeof binding !== "object" || fields.some(key => typeof binding[key] !== "string" || !binding[key].length || binding[key].length > 2048) ||
             binding.conversationId !== binding.nativeConversationId || binding.bindingRevision !== 1 || binding.leaseGeneration !== 1 || !Number.isSafeInteger(conversationRevision) || conversationRevision < 0 ||
-            Object.keys(binding).some(key => ![...fields, "workspaceId", "accountId", "bindingRevision", "leaseGeneration"].includes(key as typeof fields[number]))) throw new TypeError("Invalid initial binding");
+            Object.keys(binding).some(key => ![...fields, "workspaceId", "accountId", "nativeScopeId", "bindingRevision", "leaseGeneration"].includes(key as typeof fields[number]))) throw new TypeError("Invalid initial binding");
         for (const key of ["workspaceId", "accountId"] as const) if (binding[key] !== undefined && (typeof binding[key] !== "string" || !binding[key]!.length || binding[key]!.length > 2048)) throw new TypeError("Invalid binding identity");
+        if (binding.nativeScopeId !== undefined && (typeof binding.nativeScopeId !== "string" || !binding.nativeScopeId.length || binding.nativeScopeId.length > 200 || /[\u0000-\u001f]/.test(binding.nativeScopeId))) throw new TypeError("Invalid native conversation scope");
         if (capabilities !== undefined && (!validateCapabilities(capabilities).valid || capabilities.appId !== binding.appId)) throw new TypeError("Invalid binding capabilities");
-        await this.database.transaction(async client => {
-            await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`connect:${binding.sessionId}`]);
-            const device = await client.query("SELECT d.device_id FROM devices d JOIN device_credentials c USING(device_id) WHERE d.device_id=$1 AND d.user_id=$2 AND d.status='active' AND c.token_hash=$3 AND c.revoked_at IS NULL AND c.expires_at>clock_timestamp() FOR UPDATE OF d,c", [principal.deviceId, principal.userId, hashSecret(credential)]);
+        if (options.takeover !== undefined && typeof options.takeover !== "boolean") throw new TypeError("Binding takeover must be a boolean");
+        if (options.continuity !== undefined && typeof options.continuity !== "boolean") throw new TypeError("Binding continuity must be a boolean");
+        if (options.continuity && !binding.nativeScopeId) throw new TypeError("Continuity requires a native scope");
+        const requestedBinding = structuredClone(binding);
+        const display = bindingDisplay(options.display);
+        const conversationKey = nativeConversationKey(binding);
+        return this.database.transaction(async client => {
+            if (conversationKey) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`native-conversation:${conversationKey}`]);
+            const device = await client.query("SELECT d.device_id FROM devices d JOIN device_credentials c USING(device_id) WHERE d.device_id=$1 AND d.user_id=$2 AND d.status='active' AND c.token_hash=$3 AND c.revoked_at IS NULL AND c.expires_at>clock_timestamp() FOR SHARE OF d,c", [principal.deviceId, principal.userId, hashSecret(credential)]);
             if (!device.rowCount) throw new Error("Device credential changed before binding registration");
+            // Choose continuity only after authenticating the device, under the native-key lock.
+            if (options.continuity) {
+                const retry = await client.query("SELECT b.device_id,b.state,b.payload,s.state AS session_state FROM bindings b JOIN sessions s USING(session_id) WHERE b.binding_id=$1 FOR NO KEY UPDATE OF b", [binding.bindingId]);
+                if (retry.rowCount) {
+                    const row = retry.rows[0];
+                    if (row.device_id !== principal.deviceId || row.state !== "active" || row.session_state !== "active" || canonicalJson(row.payload.registrationRequest) !== canonicalJson(requestedBinding)) throw new StorageConflictError("Continuity retry conflicts with prior registration");
+                    return { binding: row.payload.binding as Binding, laneWatermarks: row.payload.registrationWatermarks as BindingRegistration["laneWatermarks"], ...(row.payload.outputCheckpoint ? { outputCheckpoint: row.payload.outputCheckpoint as BindingOutputCheckpoint } : {}) };
+                }
+                const previous = await client.query("SELECT b.session_id FROM bindings b JOIN sessions s USING(session_id) WHERE b.native_conversation_key=$1 AND s.owner_user_id=$2 ORDER BY b.created_at DESC,b.binding_revision DESC,b.binding_id DESC LIMIT 1", [conversationKey, principal.userId]);
+                if (previous.rowCount) {
+                    const sessionId = String(previous.rows[0].session_id);
+                    const revision = await client.query("SELECT max(binding_revision) AS revision FROM bindings WHERE session_id=$1", [sessionId]);
+                    binding = { ...binding, sessionId, bindingRevision: Number(revision.rows[0].revision) + 1 };
+                }
+            }
+            await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`connect:${binding.sessionId}`]);
+            // Event writes acquire the binding before advancing the session watermark. Use the same order.
+            if (options.continuity) await client.query("SELECT binding_id FROM bindings WHERE session_id=$1 ORDER BY binding_revision FOR NO KEY UPDATE", [binding.sessionId]);
             const session = await client.query("SELECT owner_user_id,state FROM sessions WHERE session_id=$1 FOR UPDATE", [binding.sessionId]);
             if (session.rowCount && (session.rows[0].owner_user_id !== principal.userId || session.rows[0].state !== "active")) throw new Error("Session ownership or state does not permit registration");
             if (!session.rowCount) await client.query("INSERT INTO sessions(session_id,owner_user_id) VALUES($1,$2)", [binding.sessionId, principal.userId]);
-            const existing = await client.query("SELECT binding_id,device_id,state,payload FROM bindings WHERE session_id=$1 FOR UPDATE", [binding.sessionId]);
-            if (existing.rowCount) {
+            const existing = await client.query<{ binding_id: string; device_id: string; state: string; payload: { binding?: unknown; registrationWatermarks?: BindingRegistration["laneWatermarks"] } }>("SELECT binding_id,device_id,state,payload FROM bindings WHERE session_id=$1 ORDER BY binding_revision DESC FOR UPDATE", [binding.sessionId]);
+            if (options.continuity && binding.bindingRevision === 1 && existing.rowCount) throw new StorageConflictError("An existing session can continue only its own native conversation key");
+            if (existing.rowCount && !options.continuity) {
                 if (existing.rowCount !== 1 || existing.rows[0].binding_id !== binding.bindingId || existing.rows[0].device_id !== principal.deviceId || existing.rows[0].state !== "active" || canonicalJson(existing.rows[0].payload.binding) !== canonicalJson(binding)) throw new StorageConflictError("Connect binding conflicts with existing session");
-                return;
+                // Bindings registered before watermarks existed replay their device lanes from the start.
+                return { laneWatermarks: existing.rows[0].payload.registrationWatermarks ?? { prompt: 0, control: 0 } };
             }
-            await client.query("INSERT INTO bindings(binding_id,session_id,device_id,binding_revision,lease_generation,state,payload,lease_expires_at) VALUES($1,$2,$3,1,1,'active',$4::jsonb,clock_timestamp()+interval '60 seconds')", [binding.bindingId, binding.sessionId, principal.deviceId, canonicalJson({ binding, conversationRevision, ...(capabilities ? { capabilities: capabilities.operations, capabilityReport: capabilities } : {}) })]);
+            let replacedBindingId: string | undefined;
+            if (conversationKey) {
+                // Waits for an admitted dispatch on the holder, so a takeover fences it only after that mutation.
+                const holders = await client.query<{ binding_id: string; session_id: string; device_id: string; live: boolean; owner_user_id: string; display: BindingDisplay | null; device_label: string | null }>(
+                    "SELECT b.binding_id,b.session_id,b.device_id,COALESCE(b.lease_expires_at>clock_timestamp(),false) AS live,s.owner_user_id,b.payload->'display' AS display,d.payload->>'label' AS device_label FROM bindings b JOIN sessions s USING(session_id) JOIN devices d ON d.device_id=b.device_id WHERE b.native_conversation_key=$1 AND b.state='active' FOR NO KEY UPDATE OF b", [conversationKey]);
+                for (const holder of holders.rows) {
+                    const owned = holder.owner_user_id === principal.userId;
+                    if (holder.live && !(owned && options.takeover === true)) {
+                        const label = [holder.device_label, holder.display?.workspaceLabel, holder.display?.windowLabel, holder.display?.conversationLabel].filter((text): text is string => typeof text === "string" && text.length > 0).join(" · ");
+                        throw new NativeConversationBoundError(owned ? `This native conversation is already connected through another binding${label ? ` (${label})` : ""}. Disconnect it there, or connect again with explicit takeover.` : "This native conversation is already connected through another binding.");
+                    }
+                    if (holder.live) {
+                        await client.query("UPDATE bindings SET state='detached',lease_expires_at=NULL WHERE binding_id=$1 AND state='active'", [holder.binding_id]);
+                        replacedBindingId = holder.binding_id;
+                    } else await client.query("UPDATE bindings SET state='stale' WHERE binding_id=$1 AND state='active'", [holder.binding_id]);
+                    await client.query("INSERT INTO audit_records(audit_id,session_id,actor_id,action,payload) VALUES($1,$2,$3,$4,$5::jsonb)", [randomUUID(), holder.session_id, principal.userId, holder.live ? "binding.native_takeover" : "binding.native_holder_expired",
+                        canonicalJson({ fromBindingId: holder.binding_id, fromDeviceId: holder.device_id, toBindingId: binding.bindingId, toDeviceId: principal.deviceId })]);
+                }
+            }
+            let outputCheckpoint: BindingOutputCheckpoint | undefined;
+            if (options.continuity) {
+                const projector = new TranscriptProjector(binding.sessionId);
+                const events = await client.query<{ session_seq: string; payload: ProtocolEvent }>("SELECT session_seq,payload FROM events WHERE session_id=$1 ORDER BY session_seq", [binding.sessionId]);
+                for (const row of events.rows) projector.ingest({ sessionSeq: Number(row.session_seq), event: row.payload });
+                const projection = projector.snapshot();
+                if (projection.needsRepair || projection.items.length > 2048 || existing.rows.length > 2048) throw new StorageConflictError("Continuity output checkpoint requires reconciliation or exceeds its 2048-item limit");
+                outputCheckpoint = { bindingIds: existing.rows.map(row => row.binding_id), items: projection.items.map(item => ({ itemId: item.itemId, turnId: item.turnId, revision: item.revision, partial: item.partial, kind: item.kind, ...(item.nativeCategory !== undefined ? { nativeCategory: item.nativeCategory } : {}),
+                    digest: createHash("sha256").update(canonicalJson({ kind: item.kind, content: item.content, partial: item.partial, nativeCategory: item.nativeCategory ?? null })).digest("hex") })) };
+            }
+            const lanes = await client.query<{ lane: string; last_seq: string }>("SELECT lane,last_seq FROM lane_counters WHERE device_id=$1", [principal.deviceId]);
+            const laneWatermarks = { prompt: Number(lanes.rows.find(row => row.lane === "prompt")?.last_seq ?? 0), control: Number(lanes.rows.find(row => row.lane === "control")?.last_seq ?? 0) };
+            await client.query("INSERT INTO bindings(binding_id,session_id,device_id,binding_revision,lease_generation,state,payload,lease_expires_at,native_conversation_key) VALUES($1,$2,$3,$6,1,'active',$4::jsonb,clock_timestamp()+interval '60 seconds',$5)",
+                [binding.bindingId, binding.sessionId, principal.deviceId, canonicalJson({ binding, ...(options.continuity ? { registrationRequest: requestedBinding, outputCheckpoint } : {}), conversationRevision, registrationWatermarks: laneWatermarks, ...(display ? { display } : {}), ...(capabilities ? { capabilities: capabilities.operations, capabilityReport: capabilities } : {}) }), conversationKey ?? null, binding.bindingRevision]);
+            if (options.continuity && binding.bindingRevision > 1) await client.query("INSERT INTO audit_records(audit_id,session_id,actor_id,action,payload) VALUES($1,$2,$3,'binding.continued',$4::jsonb)", [randomUUID(), binding.sessionId, principal.userId, canonicalJson({ bindingId: binding.bindingId, bindingRevision: binding.bindingRevision })]);
+            return { ...(options.continuity ? { binding, outputCheckpoint } : {}), laneWatermarks, ...(replacedBindingId ? { replacedBindingId } : {}) };
         });
     }
 
     async detachBinding(principal: DevicePrincipal, credential: string, bindingId: string): Promise<void> {
         requireAuthenticatedDevice(principal);
         await this.database.transaction(async client => {
-            const device = await client.query("SELECT d.device_id FROM devices d JOIN device_credentials c USING(device_id) WHERE d.device_id=$1 AND d.status='active' AND c.token_hash=$2 AND c.revoked_at IS NULL AND c.expires_at>clock_timestamp() FOR UPDATE OF d,c", [principal.deviceId, hashSecret(credential)]);
+            const device = await client.query("SELECT d.device_id FROM devices d JOIN device_credentials c USING(device_id) WHERE d.device_id=$1 AND d.status='active' AND c.token_hash=$2 AND c.revoked_at IS NULL AND c.expires_at>clock_timestamp() FOR SHARE OF d,c", [principal.deviceId, hashSecret(credential)]);
             if (!device.rowCount) throw new Error("Device credential changed before binding disconnection");
             await client.query("UPDATE bindings SET state='detached',lease_expires_at=NULL WHERE binding_id=$1 AND device_id=$2 AND state='active'", [bindingId, principal.deviceId]);
         });

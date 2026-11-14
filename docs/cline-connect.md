@@ -22,6 +22,14 @@ Tool origin is captured out of band from the pinned SDK session and tool-call id
 
 **Cline Bridge: Connection Status** and the persistent status indicator expose listener state and selected task. **Cline Bridge: Disconnect** disables dispatch synchronously, stops subscriptions and detaches the exact binding locally; it also attempts authenticated server detach. A network failure cannot keep local delivery enabled. It does not cancel already running app work or revoke native permissions. Use the separate addressed cancellation control for that purpose. No credentials or native binding tokens enter model-visible results or SQLite.
 
+## Several windows (MI-02, 2026-11-05)
+
+Each VS Code window runs one live binding. Windows of one installation share the saved device, but each binding has its own inbox under global storage (`inboxes/<profile and device>/binding-<session>.sqlite`), scoped to its session and starting at the server's registration watermark. A window holds a shared lock on its inbox directory while connected, and a clean disconnect deletes its inbox unless a native outcome is uncertain or the server detach failed.
+
+Before registering, the companion reads `features` from `GET /v2/health` and sends optional fields only to a server that lists them. With `binding.nativeScope` it sends the Cline native scope: a hash of the machine ID and the Cline data directory, resolved with Cline 4.1.22's own `CLINE_DATA_DIR`/`CLINE_DIR`/`~/.cline/data` rules. With `binding.display` it sends the workspace name and the start of the task's first message, unless the application-scoped setting `sdcCline.shareDisplayLabels` is off. When the server answers `CONVERSATION_BOUND_ELSEWHERE`, the companion shows the holder's labels and asks before moving the connection here; it retries once with `takeover: true` only after explicit local consent.
+
+Sign-in, token refresh and pairing take one exclusive lock shared by every SDC extension and installation of the account (`$TMPDIR/sdc-oidc-callback-15945.lock`), because they share the callback port. Other windows wait and then reuse the saved tokens or device. A port held by another program gives a clear message instead of a generic failure. **Revoke and Forget** writes a maintenance marker to SecretStorage, which tells other windows using the profile to disconnect, then waits up to 30 seconds for their inboxes to close before deleting them. **Cline Bridge: Show Connections for This Account** lists the account's sessions read-only, live ones first, marking this window.
+
 ## Developer verification
 
 Run `npm run test:m21`, root build/lint/tests, and the disposable PostgreSQL tests with `M21_TEST_DATABASE_URL` set to the repository's loopback test service. Native fixtures prove races and runtime behavior; they do not prove live Cline acceptance.

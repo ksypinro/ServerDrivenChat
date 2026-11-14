@@ -3,6 +3,7 @@ import type { ConnectToolResult, TrustedConnectContext } from "@server-driven-ch
 /** The app-owned API. Stock Cline does not export this interface. */
 export interface NativeContext {
     installationId: string; hostId: string; windowId: string; workspaceId: string;
+    nativeScopeId?: string;
     taskId: string; generation: string;
 }
 export interface NativeMessage {

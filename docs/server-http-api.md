@@ -1,5 +1,14 @@
 # Server HTTP/SSE API (M09)
 
+MI-04 candidate registration additionally advertises `binding.continuity`. After
+local consent, a scoped client may POST `continuity: true` with its proposed initial
+binding. The response binding is authoritative: the owner's latest session for that
+native key is retained and its revision advances. A live holder still needs explicit
+takeover; disabled/closed sessions are refused. An identical active registration
+retry returns the same binding. Existing caller keys do not follow the replacement;
+issue new keys. GET `/v2/sessions` adds `workspaceOverlap`, counting only visible live
+sessions with equal workspace IDs. See [MI-04 scope and pending native acceptance](../evidence/MI04/README.md).
+
 The server package exposes `createApiServer` from `@server-driven-chat/server`. Supply the shared `ServerDatabase`, `AuthorizationService`, and configured `AuthenticationProvider`. Bind local installations to loopback; deployments must terminate TLS before this service and must not expose the test profile.
 
 Every response includes an opaque `x-request-id`; clients may supply one. Errors use `{ "error": { "code", "message", "requestId", "retryable" } }`. Bearer credentials are read only from `Authorization` headers. They are never accepted in URLs or echoed in errors. Request JSON defaults to a 1 MiB cap. Pending commands default to 100 prompts and 1,000 controls per device, independently configured by `maxPendingPrompts` and `maxPendingControls`. Transactional admission serializes each lane; exact retries are accepted at capacity, while excess work returns retryable `429 QUEUE_FULL`. Applied/rejected acknowledgements release capacity; unknown or reconciliation-required outcomes retain it. SSE connection capacity defaults to 128 and returns `429 RATE_LIMITED` when full. Unsupported paths return 404, malformed JSON 400, size excess 413, stale/conflicting state 409, and unauthenticated/unauthorized requests 401/403.
@@ -8,7 +17,7 @@ Every response includes an opaque `x-request-id`; clients may supply one. Errors
 
 | Route | Authority and behavior |
 |---|---|
-| `GET /v2/health` | Minimal version check. |
+| `GET /v2/health` | Minimal version check. `features` lists optional registration behavior (`binding.nativeScope`, `binding.display`, `binding.takeover`, `binding.laneWatermarks`); clients send an optional field only when it is listed. |
 | `POST /v2/auth/oidc/start` | Starts provider-validated authorization-code/PKCE using an exact configured redirect URI; state, nonce and verifier are held server-side for five minutes. |
 | `POST /v2/auth/oidc/exchange` | Consumes one state once, exchanges the matching code/verifier, verifies the ID/access token identity, registers the OIDC principal, and returns short-lived tokens. |
 | `POST /v2/auth/oidc/refresh` | Refreshes tokens only when the supplied refresh token matches a user ID already linked to an OIDC identity. |
@@ -18,6 +27,8 @@ Every response includes an opaque `x-request-id`; clients may supply one. Errors
 | `GET /v2/sessions` | Authenticated user lists only owned/member sessions, their role, and the latest binding/capability metadata used by the control interface. |
 | `POST /v2/sessions/{sessionId}/turns` | User bearer token with prompt permission. Validates a protocol `turn.submit`, matches the active binding revision/lease, commits it to the prompt lane, then returns `202` with its durable sequence. |
 | `POST /v2/sessions/{sessionId}/turns/{turnId}/controls` | User bearer token, current binding, matching control command. Request-specific approval commands require the owner approval role; administration commands require owner. |
+| `POST /v2/devices/{deviceId}/bindings` | Active device credential registers an initial binding (revision and lease generation 1) and creates its owned session. Exact repeats are idempotent. Optional `takeover` (boolean) and bounded `display` labels; returns `201` with the binding and its `laneWatermarks`, plus `replacedBindingId` after a takeover. See [multiple bindings](#multiple-bindings-mi-01). |
+| `POST /v2/devices/{deviceId}/bindings/{bindingId}/detach` | Active device credential detaches its own active binding and clears the lease. Repeats are idempotent. |
 | `GET /v2/devices/{deviceId}/commands?lane=prompt\|control` | Active device credential, one independent replayable SSE lane. `Last-Event-ID` takes precedence over `after`; omitted cursor begins at zero. Each SSE event ID is the durable lane sequence. |
 | `POST /v2/devices/{deviceId}/events` | Active, bound device credential and validated protocol event. Deduplicates immutable event identity and responds only after commit. |
 | `POST /v2/devices/{deviceId}/acks` | Active, bound device credential and durable monotonic command receipt/application status. Acknowledgement includes `sessionId`, `lane`, `laneSeq`, and `state` (`received`, `applied`, `rejected`, `unknown`, or `reconciliation_required`); status transitions cannot regress. |
@@ -51,6 +62,18 @@ Each stream reauthenticates its original bearer token and rechecks current acces
 Device lane sequences span all bindings. Obsolete records are represented by durable `command.skipped` frames with `{deviceId,lane,laneSeq,commandId,reason:"obsolete_binding"}`; their SSE ID equals `laneSeq`. They expose no obsolete session payload. The server records terminal rejection and retains the immutable skip for replay. The bridge persists it before advancing its receipt cursor. Active records for other bindings remain ordinary device feed records and are routed through the shared local inbox.
 
 `dispatch.permit` contains `{sessionId,bindingRevision,leaseGeneration,leaseExpiresAt,serverTime}`. Both transport metadata schemas are exported under `protocol/schemas/v2.0/`; they are server-owned route metadata, separate from user commands and native event envelopes. A permit is not an approval grant. Its transaction uses the same row locks as generation changes and credential revocation; a takeover committed first rejects admission, while one arriving after admission waits for channel release. The channel is bounded by the current lease. The bridge additionally imposes a 10-second request/channel bound and native mutation guard.
+
+## Multiple bindings (MI-01)
+
+Several windows or installations may hold live bindings at once; see the [multi-instance plan](feasibility/multi-instance-concurrency.md). Server-side rules added on 2026-11-04:
+
+- **One live binding per native conversation.** A registration whose binding carries `nativeScopeId` is refused with `409 CONVERSATION_BOUND_ELSEWHERE` while another unexpired active binding holds the same `(appId, nativeScopeId, nativeConversationId)`. Only the holder's owner sees its device and display labels in the message. An expired holder is marked stale and replaced. With `takeover: true`, the same owner detaches a live holder in the registration transaction; the holder's admitted dispatch finishes first, its queued commands become obsolete tombstones, and its public keys stop working. Other owners cannot take over. Takeovers and expired-holder replacements are audited.
+- **Lane watermarks.** `laneWatermarks: {prompt, control}` are the device-lane heads read inside registration. Commands for the new session can only be recorded after it commits, so all of them have later sequences; a new local inbox may start its device-lane cursors there. Repeated registration returns the original values, and bindings registered before MI-01 report zero.
+- **Display labels.** `display` accepts only `conversationLabel`, `workspaceLabel` and `windowLabel`, each 1–120 characters without control, zero-width or bidirectional formatting characters. Labels are stored with the binding, returned by `GET /v2/sessions`, shown by the control interface and never used for authorization.
+- **Shared device rows.** Admission, event and acknowledgement fences, lease renewal, registration and detach take shared locks on the device and credential rows. One binding's dispatch permit no longer delays other bindings of the same device; revocation and rotation still wait for it.
+- **Pending limits.** `maxPendingPrompts`/`maxPendingControls` (defaults 1000/2000) bound a device lane, now counting only sessions with an active binding. `maxPendingPromptsPerSession`/`maxPendingControlsPerSession` (defaults 100/1000) bound each session. Exceeding either returns `429 QUEUE_FULL`.
+
+The device's lease and command routes are unchanged. Renewing a detached or replaced binding is refused like any binding that is not actively bound.
 
 ## Planned public gateway extension — not implemented
 

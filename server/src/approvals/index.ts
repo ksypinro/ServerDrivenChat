@@ -1,7 +1,7 @@
 import { randomUUID, sign as cryptoSign, type KeyObject } from "node:crypto";
 import { canonicalJson, validateDecisionAgainstRequest, type ApprovalDecisionProposal, type ApprovalRequest, type PermissionGrant } from "@server-driven-chat/protocol";
 import type { OidcPrincipal, DecisionAssertionClaims, AuthorizationService } from "../auth/index.js";
-import { StorageCapacityError, StorageConflictError, StorageNotFoundError, type ServerDatabase } from "../storage/index.js";
+import { StorageConflictError, StorageNotFoundError, type ServerDatabase } from "../storage/index.js";
 
 export interface ApprovalDecisionInput extends ApprovalDecisionProposal {
     sessionId: string;
@@ -23,8 +23,8 @@ export interface RecordedApproval {
 
 /** Transactional reviewer decision engine. A return value means recorded only; native application is separate. */
 export class ApprovalEngine {
-    constructor(readonly database: ServerDatabase, readonly authorization: AuthorizationService, readonly options: { privateKey: KeyObject | string; now?: () => number; maxPendingControls?: number }) {
-        if(options.maxPendingControls!==undefined && (!Number.isSafeInteger(options.maxPendingControls)||options.maxPendingControls<1)) throw new RangeError("Approval control queue limit is invalid");
+    constructor(readonly database: ServerDatabase, readonly authorization: AuthorizationService, readonly options: { privateKey: KeyObject | string; now?: () => number; maxPendingControls?: number; maxPendingControlsPerSession?: number }) {
+        for (const limit of [options.maxPendingControls,options.maxPendingControlsPerSession]) if(limit!==undefined && (!Number.isSafeInteger(limit)||limit<1)) throw new RangeError("Approval control queue limit is invalid");
     }
 
     async decide(reviewer: OidcPrincipal, input: ApprovalDecisionInput): Promise<RecordedApproval> {
@@ -80,8 +80,7 @@ export class ApprovalEngine {
             const grants = input.grantedPermissions.map((grant) => ({ grantId: randomUUID(), grant, state: "pending" as const }));
             const commandId = randomUUID();
             await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`lane:${input.deviceId}:control`]);
-            const pending=await client.query<{count:string}>("SELECT count(*) FROM commands c LEFT JOIN command_acknowledgements a USING(device_id,lane,lane_seq) WHERE c.device_id=$1 AND c.lane='control' AND (a.state IS NULL OR a.state NOT IN ('applied','rejected'))",[input.deviceId]);
-            if(Number(pending.rows[0].count)>=(this.options.maxPendingControls??1000)) throw new StorageCapacityError("Pending control queue capacity is full");
+            await this.database.assertPendingCapacity(client,{deviceId:input.deviceId,lane:"control",sessionId,deviceLimit:this.options.maxPendingControls??2000,sessionLimit:this.options.maxPendingControlsPerSession??1000});
             const lane = await client.query<{ last_seq: string }>("INSERT INTO lane_counters(device_id,lane,last_seq) VALUES($1,'control',1) ON CONFLICT(device_id,lane) DO UPDATE SET last_seq=lane_counters.last_seq+1 RETURNING last_seq",[input.deviceId]);
             const laneSeq = Number(lane.rows[0].last_seq);
             const command = { protocolVersion: "2.0", type: "approval.decide", commandId, lane: "control", seq: laneSeq, sessionId, bindingRevision: request.bindingRevision, leaseGeneration: request.leaseGeneration, createdAt: new Date(now).toISOString(), expiresAt: input.expiresAt, payload: { decisionId: input.decisionId, requestId: input.requestId, requestRevision: input.requestRevision, actionDigest: input.actionDigest, choiceId: input.choiceId, grantedPermissions: input.grantedPermissions, expiresAt: input.expiresAt, assertion } };

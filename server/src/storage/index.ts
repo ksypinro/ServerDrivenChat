@@ -16,9 +16,12 @@ export class StorageNotFoundError extends Error {
 }
 
 export class StorageCapacityError extends Error { constructor(message: string) { super(message); this.name = "StorageCapacityError"; } }
+/** A live binding already controls the native conversation; only its owner learns which one. */
+export class NativeConversationBoundError extends Error { constructor(message: string) { super(message); this.name = "NativeConversationBoundError"; } }
 export interface BindingFence { deviceId: string; sessionId: string; bindingRevision: number; leaseGeneration: number; credentialHash?: string }
 export interface UserFence {sessionId: string; userId: string; permission: "prompt" | "approve" | "administer"; publicCredentialHash?: string}
-export interface WriteOptions { userFence?: UserFence; fence?: BindingFence; client?: PoolClient; pendingLimit?: number; singleOutstanding?: boolean }
+export interface WriteOptions { userFence?: UserFence; fence?: BindingFence; client?: PoolClient; pendingLimit?: number; sessionPendingLimit?: number; singleOutstanding?: boolean }
+export interface PendingCapacity { deviceId: string; lane: Lane; sessionId: string; deviceLimit?: number; sessionLimit?: number }
 
 export interface ServerStorageLimits { maxRecordBytes: number; maxSessionEvents: number; maxSessionEventBytes: number; maxLaneCommands: number; maxLaneCommandBytes: number }
 export const DEFAULT_SERVER_STORAGE_LIMITS: Readonly<ServerStorageLimits> = Object.freeze({ maxRecordBytes: 1024 * 1024, maxSessionEvents: 10000, maxSessionEventBytes: 32 * 1024 * 1024, maxLaneCommands: 50000, maxLaneCommandBytes: 32 * 1024 * 1024 });
@@ -106,18 +109,33 @@ export class ServerDatabase {
     } finally { client.release(); }
   }
 
-  /** Lock the authority rows before validating; evaluate expiry after every lock wait. */
+  /** Lock the authority rows before validating; evaluate expiry after every lock wait.
+   * The binding row is exclusive. Device and credential rows are shared, so bindings of one device do not
+   * serialize behind each other's dispatch permit, while revocation and rotation still wait for admitted work. */
   async lockBindingFence(client: PoolClient, fence: BindingFence): Promise<{leaseExpiresAt: string; serverTime: string}> {
-    const rows = await client.query("SELECT b.binding_id FROM bindings b JOIN devices d USING(device_id) WHERE b.device_id=$1 AND b.session_id=$2 FOR NO KEY UPDATE OF b,d", [fence.deviceId,fence.sessionId]);
-    if (!rows.rowCount) throw new StorageConflictError("Binding fence no longer exists");
+    const rows = await client.query("SELECT b.binding_id FROM bindings b JOIN devices d USING(device_id) WHERE b.device_id=$1 AND b.session_id=$2 AND b.binding_revision=$3 AND b.lease_generation=$4 FOR NO KEY UPDATE OF b FOR SHARE OF d", [fence.deviceId,fence.sessionId,fence.bindingRevision,fence.leaseGeneration]);
+    if (!rows.rowCount) throw new StorageConflictError("Binding authority was fenced or no longer exists");
     if (fence.credentialHash) {
-      await client.query("SELECT credential_id FROM device_credentials WHERE device_id=$1 AND token_hash=$2 FOR UPDATE", [fence.deviceId,fence.credentialHash]);
+      await client.query("SELECT credential_id FROM device_credentials WHERE device_id=$1 AND token_hash=$2 FOR SHARE", [fence.deviceId,fence.credentialHash]);
       const credential = await client.query("SELECT 1 FROM device_credentials WHERE device_id=$1 AND token_hash=$2 AND revoked_at IS NULL AND expires_at>clock_timestamp()", [fence.deviceId,fence.credentialHash]);
       if (!credential.rowCount) throw new StorageConflictError("Device credential was revoked or expired during admission");
     }
     const valid = await client.query<{lease_expires_at: Date; server_time: Date}>("SELECT b.lease_expires_at,clock_timestamp() AS server_time FROM bindings b JOIN devices d USING(device_id) WHERE b.device_id=$1 AND b.session_id=$2 AND b.state='active' AND d.status='active' AND b.binding_revision=$3 AND b.lease_generation=$4 AND b.lease_expires_at>clock_timestamp()", [fence.deviceId,fence.sessionId,fence.bindingRevision,fence.leaseGeneration]);
     if (!valid.rowCount) throw new StorageConflictError("Binding revision, lease generation, or expiry was fenced");
     return {leaseExpiresAt: valid.rows[0].lease_expires_at.toISOString(), serverTime: valid.rows[0].server_time.toISOString()};
+  }
+
+  /** Bound pending work per device lane and per session. Commands of detached, stale or revoked bindings no longer consume capacity.
+   * Call while holding the device-lane advisory lock that also serializes sequence assignment. */
+  async assertPendingCapacity(client: PoolClient, input: PendingCapacity): Promise<void> {
+    if (input.deviceLimit === undefined && input.sessionLimit === undefined) return;
+    if ([input.deviceLimit, input.sessionLimit].some(limit => limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))) throw new RangeError("Pending queue limit is invalid");
+    const pending = await client.query<{device: string; session: string}>(`SELECT count(*) AS device,count(*) FILTER (WHERE c.session_id=$3) AS session FROM commands c
+      JOIN bindings b ON b.session_id=c.session_id AND b.device_id=c.device_id AND b.state='active'
+      LEFT JOIN command_acknowledgements a ON a.device_id=c.device_id AND a.lane=c.lane AND a.lane_seq=c.lane_seq
+      WHERE c.device_id=$1 AND c.lane=$2 AND (a.state IS NULL OR a.state NOT IN ('applied','rejected'))`, [input.deviceId,input.lane,input.sessionId]);
+    if (input.deviceLimit !== undefined && Number(pending.rows[0].device) >= input.deviceLimit) throw new StorageCapacityError("Pending command lane capacity is full");
+    if (input.sessionLimit !== undefined && Number(pending.rows[0].session) >= input.sessionLimit) throw new StorageCapacityError("Pending session queue capacity is full");
   }
 
   /** Hold revocation and scope checks through the committing authority boundary. */
@@ -247,11 +265,7 @@ export class ServerDatabase {
       const payloadBytes = Buffer.byteLength(JSON_VALUE(record.payload));
       const history = await client.query<{count: string; bytes: string; incoming_bytes: number}>("SELECT count(*) AS count,COALESCE(sum(octet_length(payload::text)),0) AS bytes,octet_length($3::jsonb::text) AS incoming_bytes FROM commands WHERE device_id=$1 AND lane=$2", [record.deviceId,record.lane,JSON_VALUE(record.payload)]);
       if (payloadBytes > this.#limits.maxRecordBytes || Number(history.rows[0].count) >= this.#limits.maxLaneCommands || Number(history.rows[0].bytes) + history.rows[0].incoming_bytes > this.#limits.maxLaneCommandBytes) throw new StorageCapacityError("Retained command lane capacity is full; preserve history and reconcile before archival");
-      if (options.pendingLimit !== undefined) {
-        if (!Number.isSafeInteger(options.pendingLimit) || options.pendingLimit < 1) throw new RangeError("Pending queue limit is invalid");
-        const pending = await client.query<{count: string}>("SELECT count(*) FROM commands c LEFT JOIN command_acknowledgements a USING(device_id,lane,lane_seq) WHERE c.device_id=$1 AND c.lane=$2 AND (a.state IS NULL OR a.state NOT IN ('applied','rejected'))", [record.deviceId,record.lane]);
-        if (Number(pending.rows[0].count) >= options.pendingLimit) throw new StorageCapacityError("Pending command lane capacity is full");
-      }
+      await this.assertPendingCapacity(client, { deviceId: record.deviceId, lane: record.lane, sessionId: record.sessionId, deviceLimit: options.pendingLimit, sessionLimit: options.sessionPendingLimit });
       const seq = await client.query<{ last_seq: string }>(
         "INSERT INTO lane_counters(device_id,lane,last_seq) VALUES($1,$2,1) ON CONFLICT(device_id,lane) DO UPDATE SET last_seq=lane_counters.last_seq+1 RETURNING last_seq",
         [record.deviceId, record.lane]);

@@ -47,7 +47,9 @@ test('M27 PostgreSQL migration/restart, concurrent original-key retries, changed
         // Retention keeps retry tombstones and does not authorize replacement work.
         await f.db.pool.query("UPDATE public_operations SET expires_at=clock_timestamp()-interval '1 second' WHERE operation_id=$1",[result.operationId]);
         await assert.rejects(restarted.submit(users[0],'session','same',prompt()),/expired tombstone/);
-        await f.db.migrate();assert.equal((await f.db.pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count,'9');
+        // Re-running migrations applies nothing twice; the count follows the checked-in migrations (010 since MI-01).
+        const {readdir}=await import('node:fs/promises');const migrations=(await readdir(new URL('../server/migrations/',import.meta.url))).filter(file=>/^\d{3}_.+\.sql$/.test(file)).length;
+        await f.db.migrate();assert.equal((await f.db.pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count,String(migrations));
     } finally {await f.close();}
 });
 
