@@ -1,0 +1,28 @@
+{
+  "name": "@server-driven-chat/vscode-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "publisher": "server-driven-chat",
+  "displayName": "Server-Driven Chat — Backend Host (Experimental)",
+  "description": "Generic backend selection, consent and durable bridge host. No native drivers qualified yet.",
+  "main": "./dist/extension.cjs",
+  "engines": { "vscode": "^1.101.0" },
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "scripts": { "build": "tsc -p tsconfig.json && node scripts/build.mjs", "lint": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": {
+    "@server-driven-chat/adapter-core": "0.1.0",
+    "@server-driven-chat/protocol": "0.1.0",
+    "@server-driven-chat/bridge": "0.1.0"
+  },
+  "devDependencies": { "@types/vscode": "1.101.0", "rolldown": "1.1.5" },
+  "contributes": { "commands": [
+    { "command": "sdcBackend.evaluate", "title": "SDC Backend: Load Signed Evaluation Plan (Unqualified)" },
+    { "command": "sdcBackend.configure", "title": "SDC Backend: Configure Server" },
+    { "command": "sdcBackend.connect", "title": "SDC Backend: Select Conversation and Connect" },
+    { "command": "sdcBackend.disconnect", "title": "SDC Backend: Disconnect" },
+    { "command": "sdcBackend.status", "title": "SDC Backend: Connection Status" },
+    { "command": "sdcBackend.forget", "title": "SDC Backend: Revoke and Forget Connection Credentials" }
+  ] }
+}

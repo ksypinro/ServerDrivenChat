@@ -66,7 +66,12 @@ function OidcSignIn({ onToken }: { onToken: (token: string) => void }) {
 function randomId(): string { return crypto.randomUUID(); }
 function readable(value: unknown, fallback: string): string { return typeof value === "string" && value.trim() ? value : fallback; }
 function bindingIdentity(payload: Record<string, unknown> = {}): Record<string, unknown> {
-    return payload.binding && typeof payload.binding === "object" ? { ...payload, ...payload.binding as Record<string, unknown> } : payload;
+    const identity = payload.binding && typeof payload.binding === "object" ? { ...payload, ...payload.binding as Record<string, unknown> } : payload;
+    // Server-validated display labels distinguish concurrent windows; they never carry authority.
+    return payload.display && typeof payload.display === "object" ? { ...identity, ...payload.display as Record<string, unknown> } : identity;
+}
+function placeLabel(identity: Record<string, unknown>): string {
+    return [identity.workspaceLabel, identity.windowLabel].filter((value): value is string => typeof value === "string" && value.trim() !== "").join(" · ");
 }
 function shortId(value: string): string { return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-5)}` : value; }
 function textFrom(content: ContentBlock[]): string { return content.map(block => block.type === "text" ? block.text : block.type === "artifact" ? `[Artifact ${block.artifactId}]` : `[${block.type} ${block.type === "file" ? block.filename : block.attachmentId}]`).join("\n"); }
@@ -74,6 +79,7 @@ function textFrom(content: ContentBlock[]): string { return content.map(block =>
 function App() {
     const [token, setToken] = useState<string | null>(null);
     const [sessions, setSessions] = useState<Session[]>([]);
+    const [showOffline, setShowOffline] = useState(true);
     const [selectedId, setSelectedId] = useState("");
     const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
     const [loading, setLoading] = useState(false);
@@ -217,6 +223,10 @@ function App() {
 
     if (!token) return <OidcSignIn onToken={setToken} />;
     const active = Boolean(binding && binding.state === "active" && Date.parse(binding.leaseExpiresAt) > Date.now());
+    const isOnline = (item: Session): boolean => Boolean(item.binding && item.binding.state === "active" && Date.parse(item.binding.leaseExpiresAt) > Date.now());
+    const workspaceId = bindingIdentity(listedBinding?.payload).workspaceId;
+    const overlapCount = active && typeof workspaceId === "string" && workspaceId.length > 0
+        ? sessions.filter(item => item.sessionId !== selectedId && isOnline(item) && bindingIdentity(item.binding?.payload).workspaceId === workspaceId).length : 0;
     const capabilities = (binding?.payload.capabilities ?? {}) as Record<string, { status?: string; reason?: string }>;
     const submitSupported = capabilities.submit?.status === "supported";
     const cancelSupported = capabilities.cancel?.status === "supported";
@@ -226,18 +236,26 @@ function App() {
     // JSON key order is not turn chronology. Never truncate an active native control.
     const visibleTurns = [...turnEntries.filter(([, state]) => interruptible(state)), ...turnEntries.filter(([, state]) => !interruptible(state)).sort(([left], [right]) => (observedTurnOrder.get(right) ?? -1) - (observedTurnOrder.get(left) ?? -1)).slice(0, 4)];
     const decisionStage = (requestId: string): string => snapshot?.interactions.find(item => item.requestId === requestId)?.state ?? "pending";
+    const sessionGroups = new Map<string, { label: string; sessions: Session[] }>();
+    for (const item of sessions.filter(item => showOffline || isOnline(item))) {
+        const data = bindingIdentity(item.binding?.payload);
+        const key = JSON.stringify([item.binding?.deviceId, data.workspaceId, data.appInstanceId]);
+        const group = sessionGroups.get(key) ?? { label: [readable(data.deviceLabel, 'Device ' + shortId(item.binding?.deviceId ?? 'unknown')), readable(data.workspaceLabel, 'Workspace'), readable(data.windowLabel, 'Window ' + shortId(String(data.appInstanceId ?? 'unknown')))].join(' · '), sessions: [] };
+        group.sessions.push(item); sessionGroups.set(key, group);
+    }
 
     return <div className="app-shell">
         <aside className="rail"><div className="rail-logo">R</div><span className="rail-spacer"/><button className="icon-button" title="Refresh sessions" aria-label="Refresh sessions" onClick={() => void refreshSessions(token).catch(handleError)}>↻</button><div className="avatar" aria-label="Signed in">S</div></aside>
         <aside className="sidebar"><div className="sidebar-head"><div><p className="eyebrow">WORKSPACE</p><h2>Conversations</h2></div><button className="icon-button" onClick={() => void refreshSessions(token).catch(handleError)} aria-label="Refresh">↻</button></div>
-            <div className="session-list">{sessions.length ? sessions.map(item => {
+            <label><input type="checkbox" checked={showOffline} onChange={event => setShowOffline(event.target.checked)} /> Show disconnected conversations</label>
+            <div className="session-list">{sessions.length ? [...sessionGroups].map(([key, group]) => <section key={key} aria-label={group.label}><p className="session-group-label">{group.label}</p>{group.sessions.map(item => {
                 const data = bindingIdentity(item.binding?.payload);
                 return <button key={item.sessionId} className={`session-row ${item.sessionId === selectedId ? "selected" : ""}`} onClick={() => setSelectedId(item.sessionId)}>
                     <span className={`connection-dot ${item.binding?.state === "active" && Date.parse(item.binding.leaseExpiresAt) > Date.now() ? "online" : "offline"}`} />
-                    <span className="session-copy"><strong>{readable(data.conversationLabel ?? data.nativeConversationId, `Session ${shortId(item.sessionId)}`)}</strong><small>{readable(data.appName ?? data.appId, "Connected app unavailable")} · {item.role}</small></span>
+                    <span className="session-copy"><strong>{readable(data.conversationLabel ?? data.nativeConversationId, `Session ${shortId(item.sessionId)}`)}</strong><small>{placeLabel(data) ? `${placeLabel(data)} · ` : ""}{readable(data.appName ?? data.appId, "Connected app unavailable")} · {item.role}</small></span>
                     <span className="session-chevron">›</span>
                 </button>;
-            }) : <p className="empty-note">No conversations are available to this account yet. Pair a device and bind a conversation in the companion.</p>}</div>
+            })}</section>) : <p className="empty-note">No conversations are available to this account yet. Pair a device and bind a conversation in the companion.</p>}</div>
             <div className="sidebar-bottom"><div className="identity-card"><span className="avatar small">U</span><span><strong>Signed in</strong><small>Access expires with this tab</small></span><button className="icon-button" aria-label="Sign out" onClick={signOut}>↪</button></div></div>
         </aside>
         <main className="main-panel">
@@ -246,6 +264,7 @@ function App() {
             {!session ? <div className="welcome"><span className="welcome-icon">✳</span><p className="eyebrow">REMOTE CONTROL</p><h1>Choose a conversation<br />to get started.</h1><p>Pick an existing app conversation. The server queues requests; the selected app does the work.</p></div> : <>
                 <header className="topbar"><div><p className="eyebrow">{readable(identity.appName ?? identity.appId, "APP CONVERSATION")}</p><h1>{readable(identity.conversationLabel ?? identity.nativeConversationId, `Session ${shortId(session.sessionId)}`)}</h1></div><div className="topbar-actions"><span className={`health-pill ${active ? "healthy" : "unhealthy"}`}><i />{active ? "Bridge connected" : "Bridge unavailable"}</span><button className="secondary" onClick={() => void loadSnapshot(token, selectedId).catch(handleError)}>Refresh state</button></div></header>
                 {!active && <div className="banner warning"><strong>This conversation is disconnected.</strong><span>Commands are unavailable until the companion reconnects and renews its lease.</span></div>}
+                {overlapCount > 0 && <div className="banner warning" role="status"><strong>Workspace shared by another connected conversation.</strong><span>Concurrent tasks may change the same files. Coordinate their work to avoid conflicts.</span></div>}
                 {binding && <section className="capability-strip"><div className="strip-heading"><strong>Connection capabilities</strong><span>{binding.state === "active" ? `Lease until ${new Date(binding.leaseExpiresAt).toLocaleTimeString()}` : "No active lease"}</span></div><div className="capability-list">{Object.entries(capabilities).map(([name, item]) => <span key={name} className={`capability ${item.status ?? "unverified"}`} title={item.reason}>{name.replace(/[A-Z]/g, letter => ` ${letter.toLowerCase()}`)} · {item.status ?? "unverified"}</span>)}{Object.keys(capabilities).length === 0 && <span className="muted small-text">Capabilities have not been reported.</span>}</div></section>}
                 {loading && !snapshot ? <div className="loading">Loading the latest session snapshot…</div> : <div className="workspace-grid">
                     <section className="transcript-panel"><div className="section-title"><div><p className="eyebrow">LIVE TRANSCRIPT</p><h2>Conversation</h2></div><span className="watermark">through event {projection?.watermark ?? 0}</span></div>

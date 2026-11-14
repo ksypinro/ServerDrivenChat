@@ -1,0 +1,28 @@
+{
+  "milestone": "MI-04",
+  "status": "accepted-unsigned-isolated-mi04-subset",
+  "nativePin": {
+    "version": "4.1.2206",
+    "baseVersion": "4.1.22",
+    "revision": 6,
+    "extensionSha256": "8da2f0506aacc06906d81783cd9ad540b93f68fdc64606d2c5e77b15d2ef1f29",
+    "nativeSha256": "323df8a1bf2f226e0f5d30a706e3c794633f4d49ec87a417a7e11598f17731a9"
+  },
+  "companion": "0.9.0",
+  "companionBundleSha256": "483d3f772703933b4434384df8bff3ba17af129b8111a0a97f9c1b46eb290a78",
+  "nativeApi": "1.3",
+  "artifacts": [
+    {
+      "file": "cline-4.1.2206-mi04.1.vsix",
+      "sha256": "6a8cae93c7ecd8d4d647dc1f566f6bcb1e44ac04b0215dbd12d96b93d2eb1a2c"
+    },
+    {
+      "file": "sdc-cline-bridge-0.9.0-mi04.10.vsix",
+      "sha256": "139820e7ca55d28aec7e8d86a3b22e6bf0e653686961aaa397cf592186418ecc"
+    }
+  ],
+  "baseArchiveSha256": "e89b68ff76b61b9c8eb2930e768682d068df13696131500af1f3b686fcbe6826",
+  "publication": "none",
+  "acceptance": "native-final10.json",
+  "completedAt": "2026-11-14T04:51:55.403986+00:00"
+}

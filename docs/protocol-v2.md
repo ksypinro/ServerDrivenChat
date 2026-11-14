@@ -8,6 +8,8 @@ Every wire message carries `protocolVersion: "2.0"`. A receiver accepts only an 
 
 Commands have stable `commandId`, `sessionId`, `bindingRevision`, `leaseGeneration`, `lane`, lane-local `seq`, and creation time. `turn.submit` uses the `prompt` lane; all controls use the independent `control` lane. Bridge events have stable `eventId`, `bridgeEpoch`, and contiguous `producerSeq` per session/epoch. The server's later UI `sessionSeq` is assigned only after durable ingestion. Identical retries retain the same ID and canonical content; the same ID with changed content is a conflict. Gaps require replay or explicit resynchronization.
 
+A `Binding` may carry an optional, opaque `nativeScopeId`: the namespace in which its `nativeConversationId` is unique, such as one app data directory on one machine. It is additive (MI-01). When present, the server allows at most one live binding per `(appId, nativeScopeId, nativeConversationId)` across sessions, devices and owners; omitting it keeps the earlier unconstrained behavior. It grants no authority.
+
 `validateProtocolMessage(value, expectedBinding)` checks schema and supported cross-field invariants. Callers pass the active session, binding revision, and lease generation; mismatch fails closed. The adapter interface returns promptly with `accepted`, `applied`, `rejected`, `unsupported`, or `unknown` evidence. Execution progress is reported through events; acceptance is not completion.
 
 ## Commands and output

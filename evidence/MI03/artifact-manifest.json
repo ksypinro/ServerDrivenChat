@@ -1,0 +1,26 @@
+{
+  "milestone": "MI-03",
+  "status": "unsigned-candidate-needs-live-multi-window-acceptance",
+  "supportTarget": {
+    "vscode": "1.140.0",
+    "platform": "macOS arm64",
+    "cline": "4.1.2204",
+    "nativeApi": "1.3",
+    "companion": "0.8.0"
+  },
+  "artifacts": [
+    {
+      "file": "cline-4.1.22-sdc-m24.1.vsix",
+      "sha256": "e89b68ff76b61b9c8eb2930e768682d068df13696131500af1f3b686fcbe6826",
+      "reuse": "byte-identical to the project-signed M24 package; native API and bundles unchanged"
+    },
+    {
+      "file": "sdc-cline-bridge-0.8.0-mi03.1.vsix",
+      "sha256": "757bde5e415f8d5dee2d5f1327d6e366c3bcd02c41c8a45e00c6f815a16273b6",
+      "companionBundleSha256": "fc40838a94b8adb4bbfd508703571ef9b73b657dbaf431f6d18e58b6d9cd263d"
+    }
+  ],
+  "serverRequirement": "Server source with MI-01 migration 010 and /v2/health features; the running M24/M26 deployment image predates it",
+  "signing": "unsigned; sign only after review",
+  "publication": "not performed"
+}

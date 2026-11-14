@@ -93,6 +93,8 @@ Dependencies refer to stable outputs, not unfinished code. Details and acceptanc
 
 **Remaining sequence:** None authorized. M26 frozen Cline/API verification is Done for the selected local subsets. M24 deployment and M25 guides/handoff are Done for the selected local target. The new IDs are appended; this explicit dependency order supersedes numerical execution order. M23 remains Done for its recorded native pin; future API/native changes need affected hardening. All 27 first-release milestones are Done for their declared subsets, plus three Deferred in the 30-row register. M27–M30 have passed their declared gates. Publication and later milestones remain separate.
 
+**Concurrency workstream status (2026-11-14):** MI-04 is Done for S6/S7/N1 at its recorded isolated candidate. MI-03 retains its bounded gate; N2 is excluded and MI-06 remains Not started. See [MI-04 completion](#mi-04-done-001--same-workspace-and-continuity-complete--2026-11-14) and [evidence](evidence/MI04/README.md). Work stopped after MI-04 as instructed.
+
 ### 1.5 Milestone specifications
 
 All paths below are **planned locations**, not claims that files exist. M03 chooses the concrete language/framework layout and records any equivalent paths. Every completed milestone also satisfies the common completion gate in section 1.6.
@@ -2178,3 +2180,1070 @@ the original local artifacts. No product implementation or frozen native artifac
 was changed. `git diff --cached --check` passed. Staged-file scans found no private
 key blocks, common provider-token patterns or JWT credentials; these scans are
 bounded checks, not a guarantee against all possible confidential data.
+
+## Multi-backend installation and planning — 2026-10-11
+
+User requested official Codex/Claude VS Code installation and a detailed common
+protocol task plan for Cline/Codex/Claude. Created `task.md` with intent, proposed
+architecture SVG, shared contract/capability semantics, switching policy, native
+feasibility gates, acceptance matrix, and proposed MB-00–MB-10 phases. These are
+planning IDs, not changes to the historical milestone register or accepted scope.
+
+Verified the signature and version of the existing isolated VS Code 1.140.0 arm64
+host. Installed `openai.chatgpt` 26.1007.21434, its declared `openai.codex-audio`
+extension-pack member 26.1007.21434, and `anthropic.claude-code` 2.1.296 in fresh
+PluginLab user-data/extensions directories under the user's Library/Application
+Support/ServerDrivenChat directory. The host's `--list-extensions --show-versions`
+confirmed installation; package manifests and entry-point hashes were recorded in
+the task plan. A local launcher opens this lab; automatic updates are disabled
+there for reproducibility. The existing M24 Cline installation was not changed.
+
+No native sign-in, task selection, model execution, new control grant or adapter
+implementation was performed. Editor-directory isolation does not establish vendor
+account/home-directory isolation. Three-backend native support remains unimplemented;
+Codex existing-IDE attachment and Claude mod effect/durable-host semantics require
+phase-specific proof. Official OpenAI and Anthropic documentation was fetched for
+planning. Local task links and SVG XML validated; the architecture image was rendered
+and visually inspected. No product tests were repeated for this documentation and
+extension-installation task.
+
+## Multi-backend implementation — MB-01 discovery — 2026-10-11
+
+User instructed implementation of `task.md`; began at MB-01 as required by the
+plan. Discovery is complete, but the native routes are not qualified. The route
+matrix and unblock conditions are in [MB-01 evidence](evidence/MB01/README.md).
+The accepted Cline route is evidence only for its exact existing pair; it does not
+qualify a generic host. Claude's documented mod prompt queue does not establish
+effect-time fencing or durable bridge hosting. The Codex extension install and
+app-server documentation do not establish an API to attach to the existing IDE
+conversation. No native prompt, sign-in, consent, runtime test, package or source
+implementation was performed. MB-02 and later phases remain untouched pending a
+supported route or explicit dependency/scope decision. This is not a reopening or
+change to M16–M18, M24–M26, accepted pins, or existing support claims.
+
+### MB-02 — Neutral driver contract complete — 2026-10-11
+
+The user again instructed finishing `task.md`, authorizing sequential shared work
+while preserving the native-route gates. Added local driver contract 1.0 in adapter
+core without changing wire protocol 2.0: strict descriptor/inventory/qualification
+parsers, complete artifact identity matching, native versus simulation evidence,
+per-operation qualification, effect-fencing requirements, and server/local/live
+policy intersection. [DECISION-011](docs/decisions/011-backend-driver-contract.md)
+records the boundary. Added the previously omitted stageAttachment operation to
+the SDK operation descriptions.
+
+Node 24.19.0/npm 11.12.1 focused build/lint and five contract tests passed; root
+build/lint/test passed 131 tests, with 55 optional database tests skipped. An initial
+test fixture shared references between observed inventory and trusted evidence;
+it was corrected to independent copies before the passing run. No native operation,
+new support record, wire/public API, dependency, package installation, or credential
+change occurred. MB-02 is Done for its contract/fixture scope. MB-03 starts next;
+Codex and Claude native routes and all native acceptance remain blocked/unqualified.
+
+### MB-03 — Experimental generic host source/fixtures complete — 2026-10-11
+
+Implemented the neutral registry and host lifecycle engine in adapter core, plus a
+separate `extensions/vscode-host` workspace with no Cline dependency. Generic UI,
+OIDC/pairing, scoped SecretStorage, retained registration-intent recovery markers,
+revoke/forget and the existing durable bridge are wired through neutral adapter
+services. Production catalog remains empty. Discovery now carries native generation
+and factory context includes current-authority/abort checks. Read-only native
+conversation revision is a local driver hook; the public wire format remains 2.0.
+Qualified/native operation limits must match; uncertain server cleanup still attempts
+native detach and blocks rebind. No old credentials/history/grants are migrated.
+
+Node 24.19.0/npm 11.12.1 `npm ci`, root build/lint/test passed: 152 passed, 55 optional
+DB skips, 0 failures. Tests cover contracts, core lifecycle, simulated HTTP with real
+file SQLite, and actual loopback callback handling with simulated OIDC for both host
+implementations. This completes MB-03's source/fixture boundary, not graphical/native
+or release acceptance. See [MB-03 evidence](evidence/MB03/README.md).
+
+### MB-04 — Cline driver source checkpoint — 2026-10-11
+
+MB-04 is In Progress. Added a driver-contract wrapper around the adopted Cline API
+1.3 adapter, with exact selection generation/window/workspace guards, native revision
+readout and invalidation/disposal. Two simulated app-owned-patch tests passed; the
+full focused shared/driver run passed 28 tests after root build/lint. Reviewed loader,
+candidate provenance/evaluation/packaging and fresh graphical native acceptance are
+still required. [MB-04 checkpoint](evidence/MB04/README.md) lists the gates. No native
+catalog record, installation, sign-in, consent or model execution occurred. A scope
+question about existing IDE conversations versus separate vendor runtimes is pending;
+the current prohibition on replacement runtimes remains in force.
+
+Final MB-02–MB-04 source verification: Node 24.19.0/npm 11.12.1 root build/lint/test
+passed 154/209 with 55 optional database skips and zero failures. New documentation
+links and `git diff --check` passed. Current handoff: MB-02 and MB-03 complete within
+their recorded contract/experimental-fixture boundaries; MB-04 remains In Progress
+with loader, candidate packaging and native acceptance outstanding; MB-05–MB-10 are
+not complete. No Git commit, extension installation or three-backend release was made.
+
+### MB-04 — Reviewed loader and unsigned packages — 2026-10-12
+
+The user resolved the earlier scope question: preserve existing IDE conversations.
+Separate vendor runtimes remain prohibited. Added the reviewed loader primitive
+with pre/post activation inventory checks and the separate Cline registration
+extension. Built reproducible unsigned review VSIXs with file/archive fingerprints
+and dependency notices; both archives pass structural/hash checks. Native catalog
+is empty, and no package was installed or native control granted.
+
+Node 24.19.0/npm 11.12.1 lock update, clean install, root build/lint/test passed:
+158 passed, 55 optional DB skips, zero failures. Packaging rerun is byte-identical;
+`git diff --check` passed. See [MB-04 evidence](evidence/MB04/README.md) and
+[native evaluation procedure](evidence/MB04/EVALUATION.md). MB-04 remains In Progress:
+complete installed-artifact measurement, a separately labeled evaluation entry
+point, and graphical/native/API/recovery/lifecycle acceptance are outstanding.
+Codex/Claude existing-IDE routes remain unqualified; task.md is not complete.
+
+### MB-04 — Installed-extension verification step complete — 2026-10-12
+
+Implemented full deterministic installed-tree measurement, concrete VS Code loader
+ports, activation wiring and invalidation on extension changes. Native/runtime
+qualification remains withheld; separate runtime entries fail closed. Five new
+filesystem tests passed, and read-only inventory of the existing maintained Cline
+package succeeded without activation or task access. Rebuilt unsigned candidates
+and verified deterministic archives/XML/file hashes.
+
+Node 24.19.0/npm 11.12.1 root build/lint/test: 163 passed, 55 optional DB skips,
+zero failures (218 total). Focused artifact/loader suite: 9 passed. See
+[updated MB-04 evidence](evidence/MB04/README.md). Next: external trusted
+qualification/evaluation bootstrap and editor/runtime provenance, followed by native
+acceptance. MB-04 stays In Progress; MB-05/06 remain blocked by their native routes.
+
+### MB-04 — Signed evaluation reaches real bounded binding — 2026-10-12
+
+Implemented a separate signed, expiring evaluation envelope/loader/command with
+compiled public trust key, full installed extension and signed macOS runtime
+measurement, fixed local HTTPS origin and evaluation-only evidence. The production
+catalog remains empty. Electron's virtual ASAR metadata caused the initial real
+measurement failure; physical `original-fs` hashing now agrees with Node and checks
+the entire signed editor bundle. Installed candidates and plan were reviewed and
+approved for PluginLab only.
+
+The user approved existing Cline task `1791641555978_71d6l` with prompts/questions/
+cancel, approvals disabled and auto-approve None. Real user-entered Keycloak sign-in
+completed. The first lease expired during the pause; graphical disconnect detached
+it and reconnection of the same task became online. Cline exposes shared native
+history; no history/account isolation or copying is claimed. Public API consumer
+acceptance is prepared and awaits its separate user-entered login. Native workflow,
+API/recovery/lifecycle results and exact production qualification remain open.
+
+Node 24.19.0/npm 11.12.1 root lint/test including build: 169 passed, 55 optional
+database skips, zero failures (224 total). Actual editor is Electron 43.7.3/Node
+24.21.0, VS Code 1.140.0. Packaging manifest distinguishes package generation from
+installation assessment. See `evidence/MB04/README.md` and `EVALUATION.md`. MB-04
+remains In Progress; neither blocked vendor route nor three-backend completion is
+claimed.
+
+### MB-04 — Declared experimental Cline core subset complete — 2026-10-12
+
+Real generic-host acceptance passed on existing task `1791641555978_71d6l`, exact
+Cline 4.1.2204/API 1.3, host/driver 0.1.0 and signed VS Code 1.140.0 in PluginLab.
+Prompts/questions/cancel, pre-dispatch approval refusal and OpenAI Chat/Responses/
+Anthropic text passed with genuine local HTTPS/Keycloak/public APIs. Initial native
+readiness rejection is preserved; local no-tools resumption and fresh reconnect
+preceded the passing suite. API credentials were revoked; no bearer/password saved.
+
+Graphical reload retained an uncertain binding, public detach reconciled it to zero
+markers, and user-approved selected-scope cleanup revoked the disposable device and
+removed only its credentials/inbox. Same exact generic packages were uninstalled/
+reinstalled; native Cline and history remained. Fresh device pairing, remote echo,
+local takeover and stale-prompt refusal then passed. The host is left disconnected.
+Exact native subset records have detached project-integrity signatures; catalog
+admission remains empty. Full installed metadata changed on reinstall and both
+inventories are recorded. Native/runtime and packaged executable bytes are unchanged.
+
+See evidence/MB04/verification.json for strict real/fixture distinctions: root
+Node 24.19.0/npm 11.12.1 lint/test including build passed 169, skipped 55 optional DB
+checks, zero failures. Shared queued/expiry/wrong-task/bridge recovery checks are
+fixtures; broad live switching/crash/isolation acceptance remains MB-08. Optional
+approval/media/caller-tool qualification remains MB-07; production native adoption
+and distribution remain MB-09. MB-04 is Done for this declared experimental Cline
+core subset. No Codex/Claude route, three-backend release or full task.md completion
+is claimed. Existing IDE conversation requirement remains in force.
+
+### MB-05 — Claude exact-build feasibility checkpoint — 2026-10-12
+
+The installed isolated PluginLab extension is Anthropic.claude-code 2.1.296. The
+official Mods documentation confirms hooks run in the VS Code chat panel and that
+prompt submission can wait until Claude is idle. It also documents hook failure
+behavior that can skip a failed guard. The installed extension package has no
+generated version-specific Mods declarations; the public declaration inspected is
+from 2.1.277. Therefore exact-build session identity/lifecycle and stale-queue
+fencing remain unproven. No Claude driver, installed/running mod, qualification
+record, or catalog entry was added. A read-only Mod probe and local marketplace
+candidate were prepared in `extensions/claude-mod-evaluation/`. Its manifests and
+JavaScript syntax pass static parsing. The available CLI is 2.1.193 and rejects
+the Mods manifest schema, so it cannot validate the target 2.1.296 runtime. MB-05
+is In Progress, blocked pending installation of the reviewed probe in the user's
+disposable existing Claude Code session, exact-build declaration capture, and the
+authority-loss-while-queued native test. Details and limits are in
+`evidence/MB05/README.md`. Claude 2.1.296 remains pinned; no newer version or
+separate runtime is in scope.
+
+### MB-05 — Exact bundled runtime unblocks evaluation — 2026-10-13
+
+Correction to the previous checkpoint: the official extension contains a bundled
+`resources/native-binary/claude` reporting 2.1.296. The unrelated Homebrew 2.1.193
+is not needed. Exact validation identified and fixed the observer's dynamic hook
+registration (literal event names are required). The observer is now named
+`sdc-session-observer` 0.1.0. Strict validation passes for it and a separate
+developer-only failure fixture. Five exact-runtime stubbed tests pass: two
+observer privacy/continuity tests and three refusal/failure diagnostics. A guard
+and catch that both throw allow the core stub through, confirming ordinary hooks
+are insufficient as the sole authority fence. No native effect is exercised.
+
+`scripts/check-claude-mod-evaluation.mjs` pins the bundled version and reproduces
+the checks, complete extension/probe/fixture measurements and executable SHA-256.
+Run with Node 24.19.0/npm 11.12.1; output is preserved in
+`evidence/MB05/exact-build-check.json`. No shared runtime/server/driver code changed;
+no PostgreSQL suite is affected. Root suites were not rerun for these isolated
+developer probes. No installed Mod, live native grant, qualification or catalog
+entry exists. PluginLab is signed in; disposable session selection and approval
+for project-local observation-only installation are requested. MB-05 remains
+In Progress until a supported independent native execution fence and the required
+real native acceptance pass. This supersedes the earlier tool-version blocker,
+not the user's unchanged native safety gate.
+
+### MB-05 — Approved live observer installed — 2026-10-13
+
+The user selected “Project analysis” and approved observation-only project-local
+installation of sdc-session-observer 0.1.0 in PluginLab Claude 2.1.296. The native
+plugin manager confirms enabled/local scope, and cached hook bytes equal reviewed
+source. Native logs confirm five Mod event hooks loaded even though the reload
+summary counts zero classic hooks. A session digest matches the selected UI
+session; one manual no-tools prompt emitted prompt.submit, turn.start and
+turn.complete with matching native turn digests. Closing the conversation view
+emitted session.end/other. No raw conversation IDs, prompt history or credentials
+were copied into evidence. See evidence/MB05/native-observer-events.json.
+
+The response was not visually confirmed: Claude's view stayed working after the
+native completion event and then failed to reopen through computer control.
+Refreshing/resetting the tool and trying the supported editor reload command did
+not restore reliable UI state. User manual Developer: Reload Window is requested.
+No second prompt, blind replay, separate agent process or remote grant occurred.
+The observer remains enabled locally; generic SDC host remains disconnected.
+Installation did not generate exact-version declarations. The ordinary-hook
+fail-open diagnostic remains a separate execution-fence blocker; observation
+success does not qualify native controls. MB-05 remains In Progress.
+
+### MB-05 — Same-conversation native observation verified — 2026-10-13
+
+The user completed Developer: Reload Window and reopened the approved existing
+“Project analysis” conversation. The saved first reply MB05-OBSERVE-ONE was
+visually verified without resubmission. A second manual no-tools prompt returned
+MB05-OBSERVE-TWO; native observation confirms the same session digest across reload
+and two distinct matching start/complete turn digests. The second answer rendered
+normally. This resolves the temporary UI/evaluation setup blocker, not native
+control qualification. Additional startup sessions seen during reload are not
+qualified cross-session tests. Exact-version declarations still were not generated.
+
+The temporary observer was disabled graphically (switch off, local enable flag
+false), and a final /reload-plugins returned zero plugins. It remains installed
+locally for repeatable evaluation. SDC is disconnected with no Claude binding.
+Sanitized event evidence and limitations are in evidence/MB05/native-observer-events.json.
+Five exact-runtime developer diagnostics from the earlier checkpoint remain valid;
+no application/runtime/shared-protocol code changed or database suite is affected.
+
+Phase A remains blocked on independent native execution-time authorization or
+guaranteed revocable queued input: ordinary guard plus catch failure reaches the
+core stub in 2.1.296. No supported alternative has been proven. Phase B/control
+implementation cannot proceed under the user's fixed gate until that primitive
+and queued authority-loss acceptance are demonstrated. MB-05 remains In Progress,
+with remote submission/attribution, output replay, crash/recovery, local takeover
+and lease-expiry acceptance still open. No broader three-backend support is claimed.
+
+### MB-05 — Alternative fence review and precise unblock specification — 2026-10-13
+
+Continued under the user's request to finish. Reviewed supported Mods methods and
+published declarations while preserving Claude 2.1.296 and existing IDE sessions.
+Published declarations remain from 2.1.277: their prompt caller arguments omit
+engine-owned wait/origin/turnId fields. wait:false in a test event is therefore
+not evidence of a production no-queue option. turn.abort addresses running work;
+session.authorize is native HTTP credential delegation, not an SDC prompt permit.
+No supported independent admission/revocation primitive has been proven.
+
+A fourth exact-runtime fixture rejects another hypothesis: submission from inside
+a prompt.submit hook is denied by Claude's host check; failed refusal fallback
+then delivers the outer prompt to the core stub, not the nested one. The initial
+nested-effect expectation failed and was corrected to assert the observed host
+behavior. Final strict validations and six developer diagnostics (four fence,
+two observer) pass on Node 24.19.0/npm 11.12.1. Full output and fingerprints are
+in evidence/MB05/exact-build-followup.json. No model was invoked by these tests.
+
+Prepared evidence/MB05/BLOCKER.md with route dispositions, capability requirements
+and queued-revocation acceptance criteria. Nothing was sent to Anthropic. Native
+/plugin-types discovery was attempted without submitting a command; the computer
+interface returned noWindowsAvailable, so no exact types or new native result is
+claimed. The observer stays disabled and the SDC host disconnected. No production,
+shared driver or database code changed; root/database suites were not rerun for
+these isolated diagnostics. MB-05 remains In Progress at Phase A, with B-F gated.
+Completion under the accepted plan requires native execution-time authorization
+that refuses on failure or guaranteed revocable pending input. Implementing an
+ordinary-hook driver now would violate the fixed completion criteria.
+
+### MB-05 — Independent classic-hook candidate found — 2026-10-14
+
+The user requested alternate routes to unblock MB-05. The previous Mod-only
+assessment missed a documented native primitive: command/HTTP classic hooks
+support `onFailure: "block"` from 2.1.295, including UserPromptSubmit. The installed
+2.1.296 extension's settings schema independently confirms this option. This
+reopens Phase A investigation without changing the pin or existing-conversation
+requirement; it does not yet qualify an execution fence.
+
+Prepared `extensions/claude-hook-evaluation/guard.py` and a local settings fragment
+for bounded explicit refusal, script crash, malformed JSON and timeout tests.
+Only marked inputs in the selected disposable session enter failure injection;
+the probe never authorizes marked input, accesses files, submits prompts, calls
+models or uses network services. Braced malformed JSON deliberately exercises
+the native parse-failure route rather than plain-text additional context.
+
+`/usr/bin/python3 -B extensions/claude-hook-evaluation/test_guard.py` passes seven
+script tests. With Node 24.19.0/npm 11.12.1,
+`scripts/check-claude-hook-evaluation.mjs` validates the fragment against the
+installed JSON Schema 2020-12 and rejects an invalid failure-policy spelling.
+Version, executable/schema and candidate hashes are in
+`evidence/MB05/classic-hook-schema-check.json`. These are script/contract checks,
+not native failure or queue results. Syntax and diff checks pass. No shared
+runtime or database code changed; root/DB suites were not rerun.
+
+PluginLab is reachable again, showing the existing Project analysis view and
+SDC disconnected. Requested action-time approval for loading this new temporary
+local hook and conducting four manual no-tools refusal diagnostics, then removing
+only the added entry. No new hook, native binding or credential was installed.
+The observer remains disabled. See `evidence/MB05/ALTERNATIVES.md` for the ordered
+native tests, including Mod-origin traversal, queue timing, expiry/takeover,
+configuration removal and authority loss during a later slow hook. Those tests
+must pass before Phase B. MB-05 remains In Progress; the historical Mod-only
+blocker is narrowed, not promoted into a production-support claim.
+
+### MB-05 — Four native classic-hook refusal cases passed — 2026-10-14
+
+Under the user's explicit bounded approval, temporarily installed only the
+reviewed project-local UserPromptSubmit hook in the selected existing Project
+analysis conversation. Claude 2.1.296/isolated VS Code 1.140.0 blocked explicit
+refusal, script crash, malformed braced JSON and a 1000ms timeout. Each case has
+both a native blocked-prompt UI notice and a native `prompt.submit: dropped` log.
+This resolves the independent guard-failure candidate for manual composer input;
+it does not establish Mod-origin coverage or effect-time fencing.
+
+Removed only the temporary hook. The original settings file was restored byte
+for byte; native `/hooks` shows No hooks configured. Observer remains disabled,
+SDC disconnected, existing conversation idle. No credentials, trust, permissions,
+history or other installation changed. See `evidence/MB05/NATIVE-CLASSIC-HOOKS.md`
+and sanitized `native-classic-hook-tests.json`. There was no independent
+turn-start observer during these four tests; do not infer broader acceptance.
+
+Prepared, but did not install, `extensions/claude-origin-evaluation`: two fixed
+attributed refusal prompts, each requiring a local command in the selected
+session; no submission on load, server binding, network/files/processes/model API
+or native tools. Six focused Node 24.19.0/npm 11.12.1 checks passed. Exact bundled
+2.1.296 strict validation passed after repairing a missing marketplace description.
+Seven existing Python guard checks passed. Candidate measurements/validation are
+in `evidence/MB05/origin-probe-candidate.json`. Native Mod-origin installation and
+idle/busy acceptance require the next action-time software approval; these fixture
+checks do not prove queue timing. Source and documentation diff checks passed.
+No shared runtime/database changed; root/DB suites were not rerun.
+
+MB-05 remains In Progress at Phase A. Next: test attributed Mod submission against
+the independent classic hook, then queued authority loss, expiry/takeover,
+Mod/configuration lifecycle and late-hook races before B-F implementation. The
+user's existing-conversation requirement and exact Claude pin remain unchanged.
+
+### MB-05 — Native Mod-origin coverage established; busy timing inconclusive — 2026-10-14
+
+Executed the user-approved origin-probe run in PluginLab's existing Project
+analysis conversation, preserving Claude 2.1.296. The IDE rejected `/plugin`;
+its graphical `/plugins` manager installed the reviewed 0.1.0 package locally.
+The idle attributed $.prompt.submit reached the classic guard and was dropped.
+The second attributed prompt was also dropped, but native timestamps place its
+offer 341 ms after the counting turn completed. It is not a native busy-queue
+pass. Both offers have reconciled native drop results; only the manual counting
+turn produced start/completion observations. No blind retry occurred.
+
+Disabled the Mod through native UI, reloaded to zero plugins and removed only
+the temporary classic hook. `/hooks` shows No hooks configured. Original setting
+values remain plus explicit false for the newly installed probe, which stays
+installed but disabled. The marketplace remains registered. Earlier observer is
+disabled, SDC disconnected and history/credentials/trust/permissions preserved.
+See `evidence/MB05/NATIVE-ORIGIN.md` and `native-origin-tests.json` for exact times
+and privacy-preserving evidence.
+
+Prepared a separate, uninstalled `extensions/claude-queue-evaluation` candidate
+that requires local one-shot arming, then schedules its refusal offer from the
+next native turn-start event. A late callback skips instead of submitting, and
+ambiguous results never retry. This addresses manual timing dependence; it does
+not implement production authority. Seven new queue-probe checks plus six origin
+regressions passed on Node 24.19.0/npm 11.12.1; exact Claude 2.1.296 strict package
+validation passed. See `queue-probe-candidate.json`. New local code loading needs
+action-time approval; no new candidate was installed or armed. No shared runtime,
+server, wire contract or DB changed; root/DB suites were not rerun.
+
+MB-05 remains In Progress at Phase A. Native busy timing, authority loss/expiry,
+local takeover, lifecycle, later-hook races and recovery remain required before
+B-F implementation. Do not describe this checkpoint as queue or lease acceptance.
+
+### MB-05 — Native busy wait followed by classic refusal passed — 2026-10-15
+
+Completed the user's approved one-shot queue diagnostic with the unchanged
+Claude 2.1.296/VS Code 1.140.0 pin in the existing Project analysis conversation.
+The package was locally installed and armed on October 14; before resuming on
+October 15, private logs confirmed no offer or native turn during the pause.
+Submitted the approved no-tools counting prompt once. Native turn-start at
+01:02:18.784Z preceded the attributed Mod offer at 01:02:18.849Z. That same turn
+completed at 01:02:29.230Z; classic guard completed at 01:02:29.409Z, native drop
+at 01:02:29.413Z and Mod drop result at 01:02:29.428Z. No additional native turn
+start was observed. UI rendered 1-100 and an explicit blocked-prompt notice.
+
+This proves native busy waiting followed by classic-hook refusal for this path.
+It supersedes the earlier manual timing uncertainty, but not changing authority:
+the guard always refused this marker and no lease or binding was established.
+MB-05 remains In Progress at Phase A; expiry/revocation, local takeover,
+Mod/configuration lifecycle, late-hook races and recovery remain open before B-F.
+See `evidence/MB05/NATIVE-QUEUE.md` and sanitized `native-queue-test.json`.
+
+The single offer is reconciled as dropped. Disabled the probe using the native
+manager, verified off, reloaded to zero plugins, removed only the temporary
+classic hook and verified No hooks configured in the native inventory. Original
+setting values remain plus explicit false for the queue probe. All evaluation
+Mods stay installed but disabled; marketplaces retained, SDC disconnected,
+history/credentials/native permissions/CA trust/other installations unchanged.
+
+Validated recorded event ordering, exact candidate execution hashes and unchanged
+bundled runtime hash. Documentation links and git diff whitespace checks pass.
+The candidate's seven queue checks plus six origin regression checks and pinned
+strict validator were already passed before installation; no execution code
+changed. No shared/runtime/database change; root/DB suites were not rerun. Native
+observations remain separate from developer tests and production support claims.
+
+### MB-05 safety-gate probe preparation — 2026-10-15
+
+Prepared `extensions/claude-authority-evaluation/` and
+`evidence/MB05/authority-probe-candidate.json` for the next native gate. The
+candidate models revocation with a short-lived synthetic local file (no SDC
+credential/server binding) and pairs the guard with a deliberately slow second
+`UserPromptSubmit` handler. It has two exact-build scenarios: revoke while a
+Mod-origin prompt waits behind an active native turn; then revoke after a
+successful guard check while another matching hook is still running. The second
+scenario measures the stale-check window directly. Current Anthropic docs state
+that all matching hooks run in parallel and `UserPromptSubmit` runs before Claude
+processes the prompt; settings order cannot serialize these handlers.
+
+Eleven Python 3.9.6 isolated guard tests passed, including revoked/expired/missing/
+malformed/wrong-session/oversized state, ordinary prompt pass-through, symlink
+refusal and native JSON output. The complete hook fragment validates against the
+installed official Claude Code 2.1.296 schema, and the negative invalid-policy
+case is rejected. `git diff --check` passes. No Claude settings/plugin state was
+changed and no native prompt was submitted. Native runs require separate
+action-time approval and remain pending; MB-05 stays In Progress. A late prompt
+after revocation is a safety-gate failure and stops Claude driver implementation
+under this exact pin, not a success to work around.
+
+### MB-05 — Revoked queued prompt refused; stale-success race not run — 2026-10-15
+
+The user approved both exact-build synthetic authority tests. In Test A, the
+one-shot attributed prompt was offered while the approved counting turn was
+active. Synthetic authority was revoked 196ms after the offer and 15.544 seconds
+before that turn completed. The classic guard then completed with `decision=block`
+and `reason=revoked`; Claude recorded the submission dropped, the Mod received
+`dropped`, and no second turn-start was recorded. This passes only the
+revoked-while-queued case; it does not test a successful check becoming stale.
+
+Test B was stopped before submitting its fixed diagnostic. After resetting the
+Mod, its session-start callback did not register the arm command for the pinned
+session digest. A Developer: Reload Window then displayed Claude's warning that
+the conversation was open elsewhere and could mix messages. The user-approved
+scope preserved the exact existing conversation; the warning's “Open here anyway”
+action was not selected. The stale-success race is therefore unrun, not passed.
+
+Cleanup restored `.claude/settings.local.json` to its original SHA-256
+`576ed52b059f2ccc198d20e3978ff5722f69f090c0f1632657674b312dff7d85`, disabled
+the queue probe, removed only the synthetic authority file, restored the
+pre-existing private trace SHA exactly, and reloaded the isolated window. The
+Claude log explicitly reports the probe disabled and not registered. SDC stayed
+disconnected. No credential, permission, trust, Cline, server or database state
+changed. Native outcomes, timestamps and limits are in
+`evidence/MB05/NATIVE-AUTHORITY.md`.
+
+MB-05 remains In Progress at Phase A. The safety gate is **not complete**: do not
+start Phase B, implement a Claude driver, or claim stale-authority safety until
+Test B and remaining takeover/lifecycle/recovery cases pass on the same pinned
+native session without overriding a cross-view ownership warning.
+
+### MB-05 — Modular completion plan for Luna review — 2026-10-15
+
+Added `docs/feasibility/mb05-completion-plan.md` and
+`docs/feasibility/mb05-luna-review-template.md` on the user's planning instruction.
+The plan defines 32 sequential units plus independently reviewed test subcases,
+prerequisites, bounded work, evidence, pass/fail criteria, cleanup, and a hard
+Phase A decision before implementation. It preserves existing conversations,
+Claude 2.1.296, protocol/contract pins, native authority and recovery gates, and
+the separate MB-09 production scope. A reviewer accepting an accurately recorded
+failure does not pass the implementation gate.
+
+The first work is baseline reconciliation and safe recovery of the selected
+conversation's single-view ownership, followed by the supported Test B diagnostic.
+The plan carries unresolved exact-build API/type questions to an explicit Phase A
+closure requirement. Later units cover pairing, durable transport, core adapter
+operations, deterministic and real native recovery, actual server authority,
+REST/provider text profiles, Cline regression, full checks, and beginner guidance.
+
+Linked the plan from `task.md` and the MB-05 evidence index. Documentation-only
+change; no native experiment, model review, implementation, permission, package,
+credential, or deployment change occurred. The plan's step records are proposed
+future artifacts, not claimed passing results. MB-05 remains In Progress at Phase A.
+
+Documentation validation passed: all 32 step IDs are ordered, every step has
+acceptance criteria and evidence/output requirements, explicit matrix subcase IDs
+are present, ten local links resolve, task/evidence navigation is connected, and
+`git diff --check` passes. Runtime/integration suites were not rerun for this plan.
+
+### MB-05 Step 01 — baseline accepted; Step 02 blocked on conversation ownership — 2026-10-15
+
+Completed only modular Step 01 in `docs/feasibility/mb05-completion-plan.md`.
+Measured VS Code 1.140.0, Claude 2.1.296, Cline 4.1.2204, SDC host/driver 0.1.0,
+all installed extensions, all three installed evaluation Mods, and five evaluation
+source trees. Reproducible tree and installed-Mod runtime comparison scripts are
+in `evidence/MB05/steps/01-baseline/`. Claude's project-local probes are disabled
+and hooks absent. The direct app view later showed that the broad app-list
+`running=false` result was stale: the isolated editor is running, its status item
+reads disconnected, and the Claude conversation displays an ownership warning.
+The manager itself was not inspected. See `state-reconciliation.md`; the stale
+claim is retained and superseded, not erased. The pre-existing 121-entry dirty
+working-tree snapshot is preserved.
+
+Luna (`gpt-6-luna`) returned an initial ACCEPT/PASS after two CHANGES REQUIRED
+rounds. A later review of the runtime-state correction requested bookkeeping
+clarification; after labeling the superseded review and reconciling the current
+state, its final consistency re-review returned ACCEPT. Step 01 is PASS/ACCEPT.
+Step 02's read-only inspection surfaced the ownership warning in the selected
+conversation; no native action or prompt was submitted. Its sanitized blocker
+packet is in `evidence/MB05/steps/02-ownership/`. Root/integration suites were not
+run. Step 02 is blocked with Luna acceptance of the blocker finding only. Step 03
+then passed Luna review for a developer-only exact-build API inventory; exact
+generated types and effect-time semantics remain unresolved. Its evidence is in
+`evidence/MB05/steps/03-exact-build-api/`. No native conversation interaction was
+performed. A supplemental read-only UI inventory found only a Welcome VS Code
+window and a different Claude Desktop session; the authoritative Project analysis
+owner remains unknown. Luna accepted the updated blocker finding. Step 04 has not
+started because its native prerequisite remains unmet. MB-05 remains In Progress
+at Phase A.
+MB-05 remains In Progress at Phase A.
+
+### MB-05 Step 02 — ownership recheck accepted; Step 04 next — 2026-10-15
+
+After the user reported releasing the existing `Project analysis` conversation in
+the other view, a read-only check of isolated VS Code 1.140.0 showed that same
+conversation in `/Users/samin/Documents/ServerDrivenChat`, with the ownership
+warning absent and SDC disconnected. A fresh in-memory session identity digest
+matched the previously selected session digest; the raw native identifier was
+not disclosed or stored. No prompt, resume, ownership override, or state change
+occurred. The initial warning/BLOCKED result and its Luna review remain preserved
+as the first attempt. Luna (`gpt-6-luna`) accepted the recheck at
+2026-10-15T03:07:59Z. See `evidence/MB05/steps/02-ownership/`.
+
+Steps 01–03 are now PASS/ACCEPT. Step 04 is next and is limited to inspecting the
+unchanged approved Test B harness, running its developer-only guard/queue/origin
+and installed-schema checks, and defining timestamp/correlation/cleanup rules. It
+does not send a native test prompt. MB-05 remains In Progress at Phase A; Step 05
+and the post-allow race are not yet run.
+
+## Multi-instance implementation — MI-01 — 2026-11-04
+
+### MI-01-DONE-001 — Server multi-binding hardening complete — 2026-11-04
+
+After the user chose one live chat per VS Code window (several live chats in one window
+are out of scope), the user instructed "Start MI-01". Model: Claude Opus 5.5
+(`claude-opus-5-5`) in Claude Code; effort was not exposed to the session. The plan,
+scope amendment and result are in
+[the multi-instance plan](docs/feasibility/multi-instance-concurrency.md) §7 and §7.1.
+MB-05 remains In Progress and was not touched.
+
+**Implemented (server, protocol package and control UI only):** optional
+`Binding.nativeScopeId`; migration 010 with a unique index over active
+native-conversation keys and a guarded rollback; `409 CONVERSATION_BOUND_ELSEWHERE`,
+with holder labels shown only to the owner; same-owner explicit `takeover`, which waits
+for the holder's admitted dispatch and is audited; expired holders marked stale. Fences,
+lease renewal, registration and detach now take shared locks on device and credential
+rows. One `assertPendingCapacity` check, used by the v2 API, approval engine and public
+API, counts only sessions with an active binding and adds per-session limits (device
+defaults 1000 prompts/2000 controls, session defaults 100/1000). Registration returns
+and stores `laneWatermarks` and accepts bounded `display` labels, which the control UI
+session list shows. Docs: `docs/server-http-api.md` (multiple bindings),
+`docs/protocol-v2.md` and `docs/server-storage.md`.
+
+**Evidence:** against the unchanged lock code, the new focused test measured a second
+binding's event upload waiting 10,020 ms behind another binding's held dispatch permit.
+After the change, upload, lease renewal and prompt admission each finished within the
+2 s bound, and device revocation still waited for the permit.
+
+**Commands:** Node 24.22.1 (the local Codex runtime cache binary; the default `node` is
+25.9.0) and npm 11.12.1. A disposable PostgreSQL 17.11 container, `sdc-mi01-pg`, ran on
+127.0.0.1:55433 with the documented fixture credentials, because an unrelated container
+occupies 55432. It was removed afterwards.
+- `npm run build` and `npm run lint` passed.
+- `npm test` with the M06, M08–M11, M14, M15, M21–M23, M27, M30 and MI01 database URLs:
+  262 tests, 261 passed, 1 skipped (Docker dump/restore), 0 failed. The first run failed
+  one M27 assertion that pinned the migration count at 9; it now compares against the
+  checked-in migration files.
+- `node --test tests/mi01-multi-binding.test.mjs`: 8/8 (exclusivity and labels, takeover
+  ordering, stale holder and six-way race, watermarks, permit independence with
+  revocation ordering, pending limits, validation, rollback).
+- Gateway: locked `.venv` Python 3.13.16 `python -m pytest -q` with `M27_TEST_DATABASE_URL`
+  and `SDC_TEST_NODE`: 54 passed.
+- Control UI browser tests: 4/4, now including the display-label assertion.
+
+**Limitations:** the Docker restart (`M06_TEST_DOCKER_RESTART`) and dump/restore
+(`M06_TEST_DOCKER_RESTORE`) checks were not run, because they drive the compose service
+whose port is occupied. Swift was not run (unchanged). There is no real Cline or
+multi-window acceptance (MI-03). The companion does not yet send `nativeScopeId`,
+labels or takeover (MI-02). The running local deployment was not rebuilt. Server source
+no longer matches the M26 frozen candidate, so any release claim needs requalification.
+
+**Scope amendment:** eager tombstoning (S3) is unnecessary because detached work no
+longer counts and undelivered commands are still tombstoned when streamed. Command
+archival moves to MI-06. MI-02, MI-03, MI-04 and MI-06 are Not started; start the next
+milestone only on a new instruction.
+
+### MI-02-DONE-001 — Bridge and companion multi-window support complete — 2026-11-05
+
+The user instructed "Start MI-02" after MI-01-DONE-001. Model: Claude Opus 5.5
+(`claude-opus-5-5`) in Claude Code; effort was not exposed to the session. The result is
+in [the multi-instance plan](docs/feasibility/multi-instance-concurrency.md) §7.2. MB-05
+was not touched. No package was built or installed, no native grant was given, and the
+running local deployment was not rebuilt.
+
+**Implemented:**
+- **Bridge.** `BridgeStore` session scope (schema version 3, `store_scope`): other
+  sessions' commands become pruned sequence-only `foreign_receipts`.
+  `initializeCursors` starts at registration watermarks, and `countUnresolvedAttempts`
+  reports uncertain attempts. `bridge/src/locks/` adds cross-process SQLite file locks
+  (exclusive, shared, timeout, abort, `isLockHeld`).
+- **Protocol and server.** The display-label rules moved to `protocol/src/display.ts` and
+  the server validates with them. `GET /v2/health` lists `features`.
+- **Cline adapter.** `clineDataDirectory`/`clineNativeScopeId` follow Cline 4.1.22's data
+  directory rules. `ClineAppAdapter` and `createClineBackendDriver` accept an optional
+  native scope. The pinned native bundle imports only `native-patch.ts` and is
+  unaffected.
+- **Companion 0.7.3 source** (version not bumped):
+  - per-binding scoped inboxes held by a shared directory lock and deleted after a clean
+    close;
+  - single-flight sign-in, refresh and pairing through `$TMPDIR/sdc-oidc-callback-15945.lock`,
+    with a clear message when the port is in use;
+  - capability negotiation before sending the native scope, labels
+    (`sdcCline.shareDisplayLabels`, application scope) or a locally consented takeover;
+  - a "Revoke and forget" maintenance broadcast that waits up to 30 s for other windows'
+    inboxes;
+  - the read-only "Show Connections for This Account" command.
+- **Generic host.** The same sign-in lock, labels, negotiation and scoped per-binding
+  inboxes. Recovery records now carry `hostId` and a liveness lock. This fixes a
+  multi-window bug: any window's record in shared global state blocked every other
+  window from connecting, and "Detach retained bindings" could detach other windows'
+  live bindings.
+- **Test helpers.** The native fixture gains an optional `taskId`.
+
+**Commands:** Node 24.22.1 and npm 11.12.1; a disposable PostgreSQL 17.11 container on
+127.0.0.1:55433 (55432 is occupied by an unrelated container), removed afterwards.
+- `npm run build` and `npm run lint` passed.
+- `tests/mi02-units.test.mjs` passed 9/9 without a database (inbox scoping, watermark
+  start, unresolved attempts, cross-process locks including `SIGKILL` release, label
+  normalization, native scope, adapter/driver scope, connections list, negotiation and
+  error codes for both extensions, host recovery rules).
+- `tests/mi02-multi-window.test.mjs` passed 4/4 against real HTTP and PostgreSQL: two
+  simulated windows on one device each receive only their own prompts; consent-gated
+  takeover; a server without features receives no optional fields; two real child
+  processes keep only their own session in watermark-started inboxes.
+- Full root `npm test` with every database suite: the first run had 273 passed, 1 failed
+  and 1 skipped. The failure was `tests/http-api.test.mjs:108`, which expects a free SSE
+  slot 50 ms after cancelling a stream under `maxSseConnections: 1`. It passed 3/3
+  alone, and the rerun passed 274 with 1 skipped (Docker dump/restore) and 0 failed.
+  Record it as a pre-existing load-sensitive timing assumption; the test was not changed.
+- Gateway locked `.venv` `pytest -q`: 54 passed. Control UI browser tests: 4/4.
+
+**Limitations:**
+- The Docker restart and dump/restore checks were not run, and Swift was not run
+  (unchanged).
+- No real VS Code, Cline or multi-window acceptance has been done; that is MI-03 and
+  needs a candidate package pair.
+- The companion's native scope derivation replicates pinned Cline 4.1.22 environment
+  rules; exposing it from the native patch (N1) is MI-04.
+- Generic host bindings carry no native scope yet, so the server cannot refuse a
+  duplicate across the companion and the host.
+- Host records written before MI-02 have no `hostId` and are treated as recoverable.
+- Source no longer matches the M26 frozen candidate or MB-04's signed host artifacts.
+
+MI-03, MI-04 and MI-06 are Not started; start the next milestone only on a new
+instruction.
+
+### MI-03-START-001 — Multi-window acceptance candidate prepared — 2026-11-05
+
+The user instructed "Start MI-03". Model: Claude Opus 5.5 (`claude-opus-5-5`). MI-03 is In
+Progress. [The runbook](evidence/MI03/README.md) records the candidate, approvals,
+procedure and rollback. Companion source is bumped to 0.8.0, and
+`extensions/vscode/scripts/package-mi03.mjs` packages it with the M24 maintained Cline
+VSIX after verifying that file against the signed manifest (hash `e89b68ff…`, unchanged).
+Companion 0.8.0 VSIX `757bde5e…` is recorded in `evidence/MI03/artifact-manifest.json`.
+The server image `sdc-server:mi03-candidate` (`sha256:10c234623bf3…`) was built under a
+separate tag. A smoke test in an isolated throwaway network applied migrations 001–010
+to a fresh PostgreSQL 17.11 and confirmed the `/v2/health` features; its containers and
+network were removed. `scripts/mi03-sessions-check.mjs` is a sanitized evidence checker
+that uses a human browser sign-in and fails on duplicate live scoped tasks.
+
+Not done: the running deployment (`sdc-server:m24-local-1`) and its database are
+unchanged, the isolated VS Code still has companion 0.7.3, and no live window has been
+connected. Next: the user's approval to back up and upgrade the local server and to
+install companion 0.8.0, then the user-driven graphical cases in the runbook.
+
+### MI-03-CHECKPOINT-001 — Approved server upgrade and companion install — 2026-11-05
+
+The user approved both steps ("Approve both"). `deploy/m24/local.sh backup` created
+`m24-20261105T153418Z` (SDC and Keycloak dumps plus attachments), and its checksums
+verify. Only the private `compose.env` line `SDC_SERVER_IMAGE` changed, to
+`sdc-server:mi03-candidate`. `local.sh up` brought all five services back healthy. The
+server log reports migrations current (010 applied to the persistent database), and
+verified-HTTPS `/v2/health` lists the four MI-01 features; the gateway health and the
+control page return 200. Companion 0.8.0 was installed in the isolated VS Code 1.140.0
+through its own CLI. The installed bundle (`fc40838a…`) matches the candidate, and the
+installed Cline `extension.js`/`sdc-native.cjs` still match their pinned fingerprints.
+See `evidence/MI03/upgrade.json`; rollback steps are recorded there. No window, sign-in,
+pairing, consent or prompt has happened; the user-run graphical cases are next.
+
+### MI-03-HANDOFF-001 — Handoff written — 2026-11-12
+
+At the user's request, `evidence/MI03/HANDOFF.md` records the goal, decisions, plan,
+completed MI-01/MI-02 work, the MI-03 state, exact environment facts, next steps,
+rollback and pitfalls for the next agent. State checked on 2026-11-12: the server runs
+`sdc-server:mi03-candidate` and is healthy; the isolated VS Code is running with
+companion 0.8.0 and Cline 4.1.2204; three disposable windows exist; no
+`sessions-*.json` evidence exists because the case-1 check never completed. MI-03
+remains In Progress.
+
+### MI-03-DONE-001 — Bounded real multi-window acceptance complete — 2026-11-12
+
+The user asked Codex to complete the process with computer use. After the mismatch
+between the six-case runbook and broader plan matrix was explained, the user explicitly
+selected **"Accept the exact 2–3-window six-case subset; explicitly track broader
+gaps."** MI-03 is **Done only for that exact subset**. Model/effort identifiers were
+not exposed to this desktop session. MI-04/MI-06 remain Not started; MB-05 was not
+touched and the three-backend completion gate remains unchanged.
+
+**Target:** existing approved `sdc-server:mi03-candidate` image
+`sha256:10c234623bf3331713b1773adaa01dcebb3d8884c2f23b595d3ca35cc894a184`,
+migration010 and unchanged gateway; isolated official VS Code1.140.0/macOSarm64,
+Cline4.1.2204/nativeAPI1.3 and unsigned companion0.8.0. VSIX and installed bundle
+hashes still match the candidate; no product build, package install, lock/runtime,
+CA trust, deployment replacement, signing or publication happened in this session.
+The user approved the currently FREE-listed `cline-free/nemotron-3.5-super-vl` Act
+model after the previous free model retired.
+
+**Real native results:** all six runbook cases passed: two-workspace UI/API routing;
+three simultaneous scoped bindings on one shared device; duplicate-task refusal/
+Cancel and explicit human-approved move with old-binding new-work refusal403;
+reload isolation; native connections listing; and coordinated revoke/forget followed
+by fresh human sign-in/pairing of the same existing C task. The API consumer recorded
+13 completed/applied text operations, identical same-key retry IDs, own-binding
+aliases, cross-session key refusal403 and no foreign markers in snapshots.
+Thirteen is the API operation count; separate native initialization/UI turns are not
+silently counted as API operations. Native Resume Task is required after reopening
+history; its pre-resume rejection is retained rather than treated as execution.
+
+**Fresh checks:** Node24.22.1. `node --test tests/mi02-units.test.mjs`:9/9.
+`MI01_TEST_DATABASE_URL=<test-url> MI02_TEST_DATABASE_URL=<test-url> node --test
+tests/mi01-multi-binding.test.mjs tests/mi02-multi-window.test.mjs`:12/12 against real
+HTTP/PostgreSQL17.11-bookworm on IPv4 loopback55433; zero failures/skips. Its disposable
+container was stopped/removed. Both new developer scripts passed `node --check`;
+`node scripts/verify-mi03-evidence.mjs` passed the receipt/hash consistency audit.
+Full build/lint/root/gateway/provider-SDK/Swift and restart/dump/restore suites were
+not rerun. November5 root274/1skip, gateway54 and UI4 remain historical.
+
+**Final cleanup:** native cross-window notice in B, zero live test bindings, zero
+inbox SQLite files and zero open/unlinked inbox SQLite handles across isolated-app
+processes. All seven temporary API keys revoked/rejected401; a narrow read-only
+operator query found zero unrevoked MI-03 test keys. API consumer exited with tokens
+only held in memory. Old device revoked/forgotten; fresh paired-device credentials
+remain in the companion after re-pairing, bridge disconnected. Five persistent
+services remain running on the candidate. Ordinary editor/native/server history and
+signed M24 artifacts are preserved; no rollback was requested.
+
+**Evidence and corrections:** `evidence/MI03/verification.json`, `README.md`, current
+`HANDOFF.md`, `api-native-2026-11-12.json`, `acceptance-2026-11-12.json`,
+`credential-cleanup-2026-11-12.json` and labelled `sessions-*.json` receipts. Retained
+attempts include closed-stdin auth-only harness startup, invalid saved refresh token
+with HTTP500 (recovered through supported GUI revoke/forget, not a source fix), retired
+model, denied native workspace tools, rejected pre-resume probe and an immediate
+post-reload count before lease expiry. The user performed credentials, every local
+consent and UI steps the computer tool could not reliably dispatch. This is
+human-assisted real native acceptance; screenshots were observed inline, not archived.
+
+**Unqualified broader gaps:** native held-permit/control latency/backlog versus M26,
+simultaneous interactive sign-ins, server-only revocation without maintenance,
+old/new companion skew, five-to-ten-window load/resource limits, queued-old-binding
+tombstones beyond new-admission refusal, approval-enabled routing, generic host,
+other installations/platforms/native versions and vendor SDK/client profiles.
+Same-workspace/continuity remains MI-04 and retention remains MI-06. The bounded
+completion is not a newly signed release or extension of M26's frozen acceptance.
+
+### MI-04-START-001 — Same workspace and continuity — 2026-11-12
+
+The user explicitly requested starting and finishing MI-04. Scope is S6, S7 and N1,
+with N2 optional. Preserve one live task per window, local consent, the frozen scope
+of prior acceptance, existing work and the separate multi-backend gates. Acceptance
+requires worktree and duplicate-window native checks and continuity/fencing tests.
+MI-04 is In Progress; MI-06 remains Not started. Implementation and verification
+must not be inferred from this start entry.
+
+### MI-04-CHECKPOINT-001 — Partial UI and native scope work — 2026-11-12
+
+The control UI now warns when the selected online session shares its workspace ID
+with another online session and can hide disconnected sessions. The native Cline
+source exposes its data scope in context; the companion prefers that value when the
+server advertises scope support and retains its existing fallback for older builds.
+These are source changes, not a newly installed or accepted native package. Node
+24.22.1 root build and lint passed; control UI browser tests 5/5 and focused M19 and
+MI-02 tests 24/24 passed. The first UI suite run failed because an existing test's
+unqualified checkbox selector matched the new control; the selector was narrowed and
+the suite then passed.
+
+MI-04 remains In Progress. Session continuity and revision fencing, grouped session
+presentation, server-side overlap handling, full affected regression and worktree/
+duplicate-window native acceptance are outstanding. The new native patch needs a
+reviewed candidate, packaging and fresh real-host qualification; no deployment,
+installation, native consent, release pin or user data was changed at this checkpoint.
+
+### MI-04-CHECKPOINT-002 — Continuity implementation and candidate — 2026-11-12
+
+The user instructed continuing each step and stopping after MI-04. Codex model
+gpt-6.1-sol; effort not exposed. The server negotiates opt-in `binding.continuity`,
+selects the owner's latest session for the native key under its existing lock and
+increments binding revision. It retains local takeover requirements, refuses disabled
+sessions and returns stable retry receipts. Existing API keys remain frozen. The
+companion adopts only session/revision before delivery; native identity and controls
+cannot change. Lease renewal now selects the active revision, storage fencing locks
+the addressed revision, and registration follows binding-before-session lock order.
+The UI groups by device/workspace/window; visible-session overlap reporting and
+offline filtering are implemented. No migration beyond 010 is needed. N2 park/resume
+is optional and excluded.
+
+Node24.22.1 build/lint passed; real HTTP/PostgreSQL MI-01/02/04/M21 checks19/19,
+root280 passed/zero failures/one optional dump-restore skip, gateway54, UI browser5
+and native-boundary/MI-02/MI-04 focused29 passed. The last adoption input guard and
+disabled-session retry guard were rebuilt and checked with affected tests after the
+full root run. Retained failures include the newly exposed registration/output
+lock-order deadlock (fixed) and the first root run's expected fencing-error wording
+mismatch (corrected before the successful full rerun).
+
+Unsigned Cline4.1.2206/API1.3 plus companion0.9.0 packages and a candidate server image
+are prepared. Native scope is supplied by the add-on; the accepted upstream Cline
+extension bundle remains byte-identical. Exact hashes, tests, limitations and pending
+native runbook are in `evidence/MI04/README.md` and `artifact-manifest.json`. The public
+HTTPS consumer `scripts/mi04-native-acceptance.mjs` adds continuity/history/old-key
+checks without executing a model. Candidate packages are not yet installed and the
+running deployment is unchanged. MI-04 remains In Progress for native acceptance;
+MI-06 and separate multi-backend work were not started.
+
+### MI-04-CHECKPOINT-003 — Approved candidate deployed and installed — 2026-11-12
+
+The user explicitly approved backup, MI-04 local server replacement and isolated
+installation of Cline4.1.2206/API1.3 plus companion0.9.0. Source hashes, archive
+hashes and image matched the review record before changes. Quiesced backup
+m24-20261112T164036Z includes application/identity databases and attachments; all
+backup checksums verified. Only SDC_SERVER_IMAGE changed in private compose.env.
+The running image is sha256:dbe970f5d3807fe9bbd79e234e58d21fc63fdf6b826715782cab0ecf4e2e99ae;
+five persistent services recovered healthy. Verified-CA HTTPS health advertises
+binding.continuity. Both exact VSIXs installed through the isolated host's supported
+CLI; installed bundle hashes match artifact-manifest.json. Rollback artifacts and
+ordinary editor/history are retained. See evidence/MI04/upgrade.json.
+
+Independent disposable repository/worktrees are recorded in evidence/MI04/lab.json.
+The user approved trust only for its worktree-a and worktree-b folders. A is observed
+trusted and the candidate bridge is disconnected; B trust is pending. Native input
+remains unreliable: AX Cline selection had no effect and coordinates reported
+noWindowsAvailable. A task creation and explicit prompts/questions/cancel Connect
+were handed to the user; no native MI-04 task/connection result is verified yet.
+The disposable automated-test PostgreSQL container was stopped/removed; a narrow
+operator query found zero live retained-deployment bindings before native acceptance.
+MI-04 remains In Progress; no signing/publication, native password entry or MI-06 work.
+
+### MI-04-CHECKPOINT-004 — Native activation defect repaired — 2026-11-12
+
+The user created MI04-WINDOW-A in the approved disposable worktree; its native
+MI04-A-READY reply and Auto-approve None were observed. Connect then failed with
+command sdcCline.connectServer not found. Inspection found index.ts filtered native
+revisions to 3/4 independently of the exact pin registry. Activation and task selection
+now use isReviewedClineManifest from the same registry as hash verification; full
+fingerprint checks remain mandatory before controls register.
+
+The repair is packaged as companion0.9.0-mi04.2; its archive/hash and bundle/hash are
+in the current artifact-manifest.json. The failed .1 package/manifest are retained.
+Cline4.1.2206/native bundle and running server image are unchanged. Nineteen focused
+checks passed, including an actual companion-bundle activation test with exact
+candidate native bytes and simulated VS Code/native APIs. Full root rerun281 passed,
+zero failed, one optional dump/restore skip; see root-tests-activation-repair.log.
+The repaired companion was installed in the same isolated host as part of the
+approved candidate upgrade; installed hash verified in upgrade.json.
+
+The user was asked to reload A, reopen/resume its existing task and complete its
+local prompts/questions/cancel consent. Result is pending. AX/native-menu reads
+work and the native alert was dismissed, but command-palette/renderer clicks and
+shortcuts still fail to deliver; no private app channel was substituted. No MI-04
+API key, native connection or model API round trip has been verified yet. The
+automated disposable PostgreSQL was stopped again. MI-04 remains In Progress.
+
+### MI-04-CHECKPOINT-005 — Native worktree and continuity cases passed — 2026-11-12
+
+Ten real verified-HTTPS API operations completed/applied in A/B on two Git worktrees.
+Concurrent routing, per-session key/alias isolation, retry identity and foreign-marker
+absence passed. A disconnect/reconnect and reload/reopen/reconnect retained session
+digest fe1a29c80d99 with revisions1→2→3, preserved answer history and refused old-key
+read/prompt probes403. Fresh keys worked; B kept responding during both workflows.
+User performed credentials and local consents; native UI/API observations remain
+human-assisted. Native resume's earlier two read-only shell commands and rejected
+README request remain recorded as setup deviations, not API test operations.
+
+The user created the supported duplicate workspace; CUA observed Untitled (Workspace).
+Its distinct C task/Connect is the current pending user handoff. No C acceptance,
+workspace warning, checkpoint-ref or same-task move result is inferred yet.
+The consumer exited during this handoff after revoking/rejecting401 all four temporary
+keys. A/B native bindings intentionally remain connected for continuation. Full
+current state and exact next steps are in evidence/MI04/HANDOFF.md; restart the
+consumer with --append after C setup. MI-04 remains In Progress; MI-06 untouched.
+
+### MI-04-CHECKPOINT-006 — Duplicate workspace/checkpoints passed; history import repair — 2026-11-12
+
+C connected through explicit user consent in the duplicate workspace. Three real
+HTTPS echoes passed on one device. A/C have equal workspace ID but distinct hosts/
+tasks; both report workspaceOverlap=true and worktree B=false. The real signed-in
+control UI showed device/workspace/window groups, offline filtering and the overlap
+warning. Native Cline text turns on a developer-dirtied disposable tree created two
+separate task-scoped stash refs; exact fixture content is in each third parent.
+See checkpoint-refs.json. No refs were manufactured and no native file tools granted.
+
+Live UI inspection also found repeated baseline imports: A's original task appeared
+three times after revisions1→2→3. This is a retained failed candidate result, not
+qualified stable presentation. The server/companion repair adds a neutral bounded
+output checkpoint (opaque IDs/revisions/digests only) to continuity receipts; the
+adapter skips unchanged baseline items, replaces edited offline items with original
+identity/next revision and imports unseen offline output once. Prior failed-attempt
+events are preserved. Limit:2048 projected items/binding revisions, with reconciliation
+required rather than truncation. Another native key cannot reuse an existing session.
+
+Focused continuity5 passed; full root281 passed/one optional skip and gateway54
+passed after the import repair; final focused guard/full-root rerun is being recorded.
+Companion .3 and a separate sdc-server:mi04-history-candidate image are prepared.
+Native Cline hash is unchanged. No history-repair deployment or native acceptance
+has yet occurred at this checkpoint. All seven keys created across the first two
+consumer runs were revoked/rejected401; consumer exited during source repair.
+MI-04 remains In Progress for repaired native continuity, same-task move and cleanup.
+
+### MI-04-CHECKPOINT-007 — Native ID reindexing repair — 2026-11-13
+
+The .3 pair completed three native API echoes after actual Resume Task and new local
+Connect consents; the earlier three paused-task probes were rejected before effects.
+A repeated UI baseline check showed old B's initial task count1→2. Investigation
+found Cline resumption reindexes ts IDs: native first-task ID reused an old status
+item ID. The first digest/ID repair therefore was insufficient; retain that failure.
+
+Current companion0.9.0-mi04.5 recognizes reindexing using semantic categories and
+unique content anchors, reconciles an ordered prefix, preserves repeated messages
+and imports identical new offline tails separately. Prefix ambiguity fails closed.
+Cline4.1.2206/API1.3 native hash is unchanged. Seven real HTTP/companion checks passed,
+including both first-ID and later-ID reindexing cases; final root283 passed/zero
+failed/one optional dump-restore skip and lint passed. Gateway54 from the prior
+history repair remains scoped; no fresh provider/native parity claim. The actual
+runtime image's 20 server/protocol JS files equal the tested build.
+
+The sdc-server:mi04-reindex-candidate image is deployed and .5 installed in the same
+approved isolated host. The user was asked to reload B and create/connect one new
+disposable B-REINDEX task to qualify its first native reload. Original B history and
+A/C remain. Native first-reload, same-task Move and final cleanup remain pending.
+All thirteen keys from prior consumer runs are revoked/rejected401; consumers exited
+during this repair. MI-04 remains In Progress; no MI-06/MB work was started.
+
+### MI-04-CHECKPOINT-008 — System restart recovery and native refusal diagnosis — 2026-11-13
+
+A system restart ended the consumer and removed the disposable /private/tmp lab.
+Persistent services recovered healthy; server image and native/companion .5 hashes
+were unchanged. No live MI04 binding remained; two interrupted-run API keys had
+expired but still require explicit public-route revocation. Project access was
+restored after a macOS permission denial. Computer-control tools remain absent from
+this session, so native steps are human-assisted. No unsupported private app route
+or replacement runtime is being used.
+
+The independent repository/worktrees were recreated at the same approved paths,
+with a new fixture commit. Original temporary Git objects are gone; recorded native
+checkpoint evidence remains historical, and no native refs were reconstructed.
+The retained B-REINDEX task's baseline completed/applied in B/C with one initial
+prompt before interruption. B's pre-restart revision2 and post-restart revision3
+Connect attempts both detached; user confirmed the generic connection failure.
+
+Companion0.9.0-mi04.6 adds bounded content-free diagnostics for refused native history
+prefix reconciliation and a specific human-readable refusal. No reconciliation rule
+or authority category changed; Cline native bytes/server image are unchanged. Build,
+focused refusal/diagnostic privacy test and affected lint passed. .5 manifest/archive
+are retained. .6 is installed only in the approved isolated host; the user was asked
+to reload B and retry same-task Connect without a new native message. Real diagnostic
+result, repaired native reload/Move and final cleanup remain open. MI-04 In Progress;
+MI-06 and unrelated MB work not started. See restart-recovery.json.
+
+### MI-04-CHECKPOINT-009 — Real reopened-answer mismatch repaired — 2026-11-13
+
+The .7 persisted bounded diagnostic confirmed native prefix mismatch index2. Live
+SDK had emitted completion_result, while reopened Cline history labels the same
+assistant answer text. Computing category-specific digests for both known accepted
+answers proved identical text/partial data. The adapter now compares exact digests
+across only its existing assistant categories text/completion_result/plan_completion_result.
+Original item IDs/categories and ordered-prefix reconciliation are retained; user/tool
+kinds are never interchangeable. Changed ambiguous prefixes still refuse. Diagnostic
+records contain only bounded categories, partial flags and hashes, not message text.
+
+Nine focused real HTTP/PostgreSQL/companion checks passed, including a faithful
+category-relabel/transient-status regression and separate identical offline tail.
+Node24.22.1 full root285 passed/zero failed/one optional dump-restore skip, build and
+lint passed. Initial root picked system LibreSSL3.3.6 without ED25519 and failed M24
+provisioning; process-local installed OpenSSL3.6.2/Python3.13.7 PATH rerun passed with
+unchanged source. Failure retained. Native Cline/server image unchanged; no database
+migration, signing/publication, credentials or controls expanded.
+
+Companion0.9.0-mi04.8 is installed in the same approved isolated host and its bundle
+hash matches the full-root build and artifact manifest. .5/.6/.7 attempts preserved.
+User was asked to reload/reopen/resume the SAME B-REINDEX text-only, then Connect
+with prompts/questions/cancel and no later local message. Real native result,
+subsequent reload/key fencing, Move/Cancel and cleanup remain pending. MI-04 remains
+In Progress; stop after MI-04. See category-repair.json and native-prefix-diagnostic.json.
+
+### MI-04-CHECKPOINT-010 — Native repair passed; host trust/update recovery — 2026-11-13
+
+On the1.140/.8 host, retained B-REINDEX reconnected at revision7, kept its original
+server session/answer and exactly one initial prompt. Fresh B echo, concurrent fresh
+A-FINAL/B echoes with scoped isolation and actual A API echo during B window reload
+passed. User explicitly authorized macOS UI scripting; agent now operates public OS
+Accessibility/UI and leaves passwords/local final consents human-only. See native8.json.
+
+B replacement checks stopped before dispatch when no live replacement appeared.
+Embedded Node reproduced protected CA-file EPERM/TLS failure; existing macOS trust
+verified200 with NODE_USE_SYSTEM_CA=1. Full isolated relaunch then revealed Microsoft
+self-update to1.146.0. B revision8 on that host is unqualified and not counted. Exact
+1.140 restore is in progress from official DMG with previously recorded checksum;
+update.mode=none added only to isolated profile. Ordinary editor/data retained.
+
+Consumer exited; all current keys revoked; database verified zero liveMI04/zero
+unrevokedMI04 keys. Disposable PostgreSQL stopped. No completion claim: exact restored
+host fresh reload/fence, duplicate same-task Cancel/Move and final cleanup still pending.
+See host-auto-update.json and current HANDOFF.md. Stop after MI04.
+
+### MI-04-DONE-001 — Same workspace and continuity complete — 2026-11-14
+
+MI-04 is Done for the selected S6/S7/N1 subset. N2 park/resume is excluded. Codex desktop completed the sequential work without delegation; exact current model/effort is not exposed. User explicitly authorized public macOS UI scripting and the final native Move action. Passwords remained human-entered.
+
+Final exact runtime: signed official VS Code1.140.0 arm64/commit07f806f999227108933c2e30515b26eecc1fda74, Cline4.1.2206/API1.3, unsigned companion0.9.0-mi04.10 (bundle483d3f772703933b4434384df8bff3ba17af129b8111a0a97f9c1b46eb290a78), server8d54282b63035ba283c2e371e82f5d4ad144a4e870f8edf5b170ec13eea4cf1c. The final repair leaves server/native binaries unchanged. Artifact hashes and exact scope are in evidence/MI04/artifact-manifest.json and native-final10.json.
+
+Real-native results: A reload2→3 preserved session/history1, rejected old-key reads/prompts403 and accepted new-key native work; B replied during reload. All three final-companion windows passed concurrent API turns with scoped key/alias/history isolation; duplicate B/C workspace overlap was reported, A's distinct worktree was not. Actual B/C checkpoint refs retained the fixture in separate task-scoped third-parent trees. Earlier UI grouping/offline observations at CHECKPOINT-006 retain their unchanged renderer scope.
+
+Agent inspected native Move warning and clicked Cancel: original B stayed at the same binding/revision13; C's prior-task key403 and A echo passed. After fresh user approval, agent clicked Move for the SAME original B-REINDEX task in C. Public checks verified SAME server session13→14, one initial prompt, earlier answers preserved, old read/prompt403 and fresh-key A/B concurrent native replies. This closes the required Move gate; no runtime/conversation substitution was used.
+
+Real .9 Move exposed reopened request-status metadata changes. .10 reconciles only an ordered status-only gap bounded by an exact unique next item, preserves item identity and emits changed metadata as replacement. Unknown/material-prefix matching stays strict. Failing regression/status diagnostic and failed histories are retained. Build/lint and focused13 passed. Initial full root hit known http-api.test.mjs:108 SSE cleanup429 timing failure; standalone HTTP and complete concurrency4 rerun passed289/0failed/1optional dump-restore skip. Logs and failure limits are preserved.
+
+Other retained deviations: automatic editor update was rejected and exact1.140 restored; system restart lost temporary Git objects/in-memory tokens; old A-FINAL native generation remains unresolved (healthy A-RECOVERY used as peer); provider promotion failure required user-approved Solar Mini4; C needed local activation before remote execution. Premature A orchestration checks and C's inactive-task rejection remain in the append-only API report, with confirmed passing reruns. Earlier human-assisted setup included read-only native commands; final API turns asserted no workspace tool activity.
+
+Final cleanup: consumer exited and publicly revoked all held keys/read401; all three windows disconnected, including old B. Operator audit verified zero liveMI04 bindings, zero unrevokedMI04 keys and zero open/unlinked inbox files across19 isolated processes. Test PostgreSQL stopped/removed. Pairing, native/server histories, rollback artifacts, ordinary editor/data and unrelated dirty project changes were preserved. No repository commit/reset, publication or expansion of frozen M24/M26 release claims.
+
+Current handoff: evidence/MI04/HANDOFF.md. MI-03 broader qualification gaps remain unqualified. MI-06/MB work was not started. Stop after MI-04.

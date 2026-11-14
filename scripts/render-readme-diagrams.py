@@ -161,7 +161,47 @@ def flow():
     d.text(66,1394,'Provider streams return committed output using the profile’s buffering rules. Local permissions remain authoritative.',15,MUTED)
     d.save('prompt-response-flow.svg')
 
+
+def multi_backend():
+    d=Diagram(1200, 'Three backends. One shared contract.',
+        'Proposed architecture · installed extensions are not yet qualified SDC backends.',
+        'Proposed architecture: browser and API clients use the existing server control plane, generic VS Code host, neutral adapter contract and registry. Cline, Codex and Claude Code drivers map to their respective existing native conversations. The generic host and new drivers are proposed; Codex and Claude routes require feasibility and acceptance.')
+    d.rect(44,151,1352,52,'#fff5de','#efd6a0',10)
+    d.text(65,183,'DESIGN PROPOSAL',13,'#825d0b',weight=700)
+    d.text(240,183,'Existing Cline acceptance stays intact. New native routes must prove identity, consent and effect safety.',16,INK)
+    d.path('M 345 294 H 555')
+    d.label(450,280,'HTTPS')
+    d.path('M 1065 294 H 885')
+    d.label(975,280,'REST / SSE')
+    d.path('M 720 346 V 415',both=True)
+    d.label(720,389,'Authenticated commands + durable events')
+    d.box(65,244,280,102,'Browser control UI',['One session/control workflow'])
+    d.box(555,232,330,114,'Existing control plane',['Server + gateway + PostgreSQL','Authority, policy and history'])
+    d.box(1065,244,310,102,'Public API clients',['Existing declared API profiles'])
+    # API clients send requests toward the control plane, not vice versa.
+    d.box(310,415,820,112,'Generic VS Code host — proposed',['Backend selection, SDC sign-in, local consent and scoped credentials',
+        'Durable bridge runtime + SQLite inbox/outbox'],TEAL)
+    d.path('M 720 527 V 566','teal',both=True)
+    d.box(310,566,820,101,'Neutral adapter contract + driver registry',['Reuse AppAdapter / protocol 2.0; negotiate reviewed capabilities'],TEAL)
+    d.rect(44,715,1352,364,'#edf2fc','#cad7ef',18)
+    d.text(66,1060,'BACKEND-SPECIFIC TRANSLATION · NO REPLACEMENT MODEL RUNTIME',13,BLUE,weight=700)
+    for x in [260,720,1180]:
+        d.path(f'M {x} 780 V 695 H 720 V 667','teal',both=True)
+        d.path(f'M {x} 883 V 929','teal',both=True)
+    d.box(85,780,350,103,'Cline driver',['Extract existing integration','Preserve reviewed native API'],TEAL)
+    d.box(545,780,350,103,'Codex driver — proposed',['Existing IDE attachment','Feasibility gate unresolved'])
+    d.box(1005,780,350,103,'Claude driver — proposed',['Investigate supported mod route','Fencing / durable host gates'])
+    d.box(85,929,350,108,'Existing Cline task',['Maintained extension','Current accepted baseline'],TEAL)
+    d.box(545,929,350,108,'Existing Codex chat',['Official extension installed','Native SDC control unqualified'])
+    d.box(1005,929,350,108,'Existing Claude chat',['Official extension installed','Native SDC control unqualified'])
+    d.rect(44,1103,1352,65,'#ffffff','#d8e0ef',12)
+    d.text(66,1130,'EFFECTIVE ACCESS',13,TEAL,weight=700)
+    d.text(255,1130,'Native capability ∩ qualification ∩ server scope ∩ local consent ∩ live authority',17)
+    d.text(66,1153,'Switching establishes a new reviewed binding; it never silently moves native history, permissions or in-flight work.',15,MUTED)
+    d.save('multi-backend-proposal.svg')
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True,exist_ok=True)
     architecture()
     flow()
+    multi_backend()

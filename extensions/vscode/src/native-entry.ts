@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { createHash, randomUUID } from "node:crypto";
 import { createClineTaskBridge } from "../../../adapters/cline/src/native-patch.js";
 import type { PinnedController } from "../../../adapters/cline/src/native-patch.js";
+import { clineNativeScopeId } from "../../../adapters/cline/src/native-scope.js";
 
 /** Loaded inside the explicitly pinned Cline application package, not in the companion. */
 export function createPinnedClineApi(controller: unknown): ReturnType<typeof createClineTaskBridge> | undefined {
@@ -13,6 +14,7 @@ export function createPinnedClineApi(controller: unknown): ReturnType<typeof cre
         installationId: `cline:${digest(`${vscode.env.machineId}:${location}`)}`,
         hostId: `extension-host:${randomUUID()}`,
         windowId: `vscode-session:${vscode.env.sessionId}`,
+        nativeScopeId: clineNativeScopeId(vscode.env.machineId),
         workspaceId: () => `workspace:${digest(JSON.stringify((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.toString()).sort()))}`,
         onWorkspaceChanged: listener => vscode.workspace.onDidChangeWorkspaceFolders(listener), remote: false, controls: true, connect: true, callerToolFence: true
     });

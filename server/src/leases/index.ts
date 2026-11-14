@@ -18,7 +18,7 @@ export class DeviceLeaseService {
         await this.authorization.authorizeDevice(principal, input.sessionId, "write_events");
         return this.database.transaction(async (client) => {
             const result = await client.query<{ device_status: string; binding_state: string; binding_revision: number; lease_generation: number; lease_valid: boolean }>(
-                "SELECT d.status AS device_status,b.state AS binding_state,b.binding_revision,b.lease_generation,b.lease_expires_at>clock_timestamp() AS lease_valid FROM bindings b JOIN devices d USING(device_id) WHERE b.device_id=$1 AND b.session_id=$2 FOR UPDATE OF b,d",
+                "SELECT d.status AS device_status,b.state AS binding_state,b.binding_revision,b.lease_generation,b.lease_expires_at>clock_timestamp() AS lease_valid FROM bindings b JOIN devices d USING(device_id) WHERE b.device_id=$1 AND b.session_id=$2 AND b.state='active' FOR UPDATE OF b FOR SHARE OF d",
                 [principal.deviceId, input.sessionId]);
             if (!result.rowCount || result.rows[0].device_status !== "active" || result.rows[0].binding_state !== "active") return { status: "fenced" };
             const row = result.rows[0];

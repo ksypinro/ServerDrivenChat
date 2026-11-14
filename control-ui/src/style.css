@@ -19,6 +19,7 @@ button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-
 .sidebar-head h2, .section-title h2 { margin: 3px 0 0; font: 700 17px Manrope, sans-serif; letter-spacing: -.3px; }
 .eyebrow { margin: 0; color: #7f929f; font: 500 9px var(--mono); letter-spacing: 1.25px; }
 .session-list { padding: 5px 10px; overflow-y: auto; }
+.session-group-label { margin: 14px 10px 5px; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; opacity: .7; }
 .session-row { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px 10px; margin: 2px 0; text-align: left; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 9px; }
 .session-row:hover { background: #1b2b36; }
 .session-row.selected { background: #1c3039; border-color: #2b4d50; }

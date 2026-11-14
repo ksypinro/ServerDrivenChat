@@ -25,7 +25,7 @@ const approval = {
     availableDecisions: [{ id: "allow_once", effect: "allow", scope: "action" }, { id: "deny", effect: "deny", scope: "action" }], actionDigest: `sha256:${"a".repeat(64)}`, evidence: { source: "native_event", complete: true }, expiresAt: new Date(Date.now() + 120_000).toISOString()
 };
 
-async function signedInPage(role, native = false, bindingState = "active", leaseExpired = false) {
+async function signedInPage(role, native = false, bindingState = "active", leaseExpired = false, extraSessions = []) {
     const context = await browser.newContext();
     const page = await context.newPage();
     let decisionState = "pending";
@@ -46,9 +46,9 @@ async function signedInPage(role, native = false, bindingState = "active", lease
         if (url.pathname === "/v2/sessions" && method === "GET") return route.fulfill({ json: { sessions: [{
             sessionId: "session-visible", state: "active", role,
             binding: { bindingId: "binding-1", deviceId: "device-1", bindingRevision: 2, leaseGeneration: 4, state: bindingState, leaseExpiresAt: new Date(Date.now() + (leaseExpired ? -60_000 : 60_000)).toISOString(),
-                payload: { ...(native ? { binding: { appId: "test.native", nativeConversationId: "native-task" } } : {}), appId: "fake.app", appName: "Fake App", nativeConversationId: "conversation-1", conversationLabel: "Existing chat", conversationRevision: 7,
+                payload: { ...(native ? { binding: { appId: "test.native", nativeConversationId: "native-task" } } : {}), appId: "fake.app", appName: "Fake App", workspaceId: "workspace-x", nativeConversationId: "conversation-1", conversationLabel: "Existing chat", conversationRevision: 7, display: { workspaceLabel: "repo-x", windowLabel: "Window 2" },
                     capabilities: { submit: { status: "supported", reason: "fake adapter" }, cancel: { status: "unsupported", reason: "This fake profile cannot cancel a running turn" } } } }
-        }] } });
+        }, ...extraSessions] } });
         if (url.pathname.endsWith("/snapshot") && method === "GET") return route.fulfill({ json: { ...(native ? { bindings: [{ bindingId: "binding-1", payload: { binding: { appId: "test.native", nativeConversationId: "native-task" }, conversationRevision: 12, capabilities: { submit: { status: "supported", reason: "native" }, cancel: { status: "supported", reason: "delegated native" } } } }] } : {}), cursors: { sessionSeq: 8 }, interactions: [{ kind: "approval", requestId: approval.requestId, requestRevision: approval.requestRevision, state: decisionState, payload: approval }], projection: { sessionId: "session-visible", watermark: 8, items: [{ itemId: "item-xss", turnId: "turn-old", kind: "assistant_message", revision: 1, partial: false, completed: true, evidence: "observed", content: [{ type: "text", text: `Rendered safely <img src=x onerror=alert('xss')>` }] }], artifacts: [], pendingApprovals: [approval], interactionStates: { [`${approval.requestId}@${approval.requestRevision}`]: decisionState }, turnStates: native ? { "000-active": "waiting_for_input", "turn-a": "completed", "turn-b": "completed", "turn-c": "completed", "turn-d": "completed", "turn-z": "completed" } : { "turn-running": "running" }, needsRepair: false, repairAfter: null } } });
         if (url.pathname.endsWith("/events")) return route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: ": keep-alive\n\n" });
         if (url.pathname === "/v2/attachments" && method === "POST") { uploadedContents.push(route.request().postDataBuffer()); return route.fulfill({ status: 202, json: { attachmentId: "attachment-ui-1", sha256: route.request().headers()["x-content-sha256"] } }); }
@@ -61,6 +61,8 @@ async function signedInPage(role, native = false, bindingState = "active", lease
     await page.goto(origin);
     await page.getByRole("button", { name: /sign in securely/i }).click();
     await page.getByRole("heading", { name: native ? "native-task" : "Existing chat", exact: true }).waitFor();
+    // MI-01 display labels distinguish concurrent windows in the session list.
+    assert.match(await page.locator(".session-row small").first().textContent(), /^repo-x · Window 2 · Fake App · /);
     return { context, page, commands, uploadedContents };
 }
 
@@ -80,7 +82,7 @@ test("M14 owner flow queues text and keeps approval recorded separate from app a
         assert.equal(commands[0].payload.content[1].attachmentId, "attachment-ui-1");
         assert.equal(uploadedContents[0].toString(), "exact committed bytes");
         await page.getByLabel("Decision").selectOption("allow_once");
-        await page.getByRole("checkbox").check();
+        await page.getByRole("checkbox", { name: /write workspace/i }).check();
         await page.getByRole("button", { name: "Record decision" }).click();
         await page.getByText("Native application is a separate stage.").waitFor();
         assert.match(await page.locator(".decision-stage").textContent(), /decision recorded/i);
@@ -129,4 +131,21 @@ test("M23 disconnected owners receive bridge repair guidance without an ownershi
         assert.equal(await f.page.getByRole("button", { name: "Queue prompt" }).isDisabled(), true);
     } finally { await f.context.close(); }
     }
+});
+
+test("MI-04 warns about online workspace overlap and can hide disconnected conversations", async () => {
+    const item = (id, state, workspaceId) => ({ sessionId: id, state: "active", role: "owner", binding: {
+        bindingId: `binding-${id}`, deviceId: "device-1", bindingRevision: 1, leaseGeneration: 1, state,
+        leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(), payload: { workspaceId, conversationLabel: id }
+    } });
+    const f = await signedInPage("owner", false, "active", false, [item("other-online", "active", "workspace-x"), item("other-offline", "detached", "workspace-x"), item("different", "active", "workspace-y")]);
+    try {
+        await f.page.getByText("Workspace shared by another connected conversation.").waitFor();
+        assert.equal(await f.page.locator('.session-list > section').count(), 2, 'group by identity rather than optional display labels');
+        await f.page.getByLabel("Show disconnected conversations").uncheck();
+        assert.equal(await f.page.getByRole("button", { name: /other-offline/ }).count(), 0);
+        assert.equal(await f.page.getByRole("button", { name: /other-online/ }).count(), 1);
+        await f.page.getByRole("button", { name: /different/ }).click();
+        assert.equal(await f.page.getByText("Workspace shared by another connected conversation.").count(), 0);
+    } finally { await f.context.close(); }
 });

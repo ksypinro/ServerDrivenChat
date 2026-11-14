@@ -1,5 +1,15 @@
 # Repository guidance
 
+## Multi-backend scope confirmation — 2026-10-11
+
+For the new `task.md` workstream, the user explicitly selected **Preserve existing
+IDE conversations**. Keep Codex/Claude drivers blocked until supported attachment
+and effect-time fencing are established. Do not substitute standalone vendor
+runtimes, CLI sessions, private app channels or new conversations. Continue feasible
+Cline/shared work sequentially; native acceptance is separate from fixture checks.
+The three-backend completion gate remains unchanged. See current tracker handoff
+and `evidence/MB04/README.md`; historical release checkpoints below remain scoped.
+
 ## Project structure
 
 This repository is a TypeScript/npm workspace plus a SwiftPM macOS companion core. `protocol/` is vendor-neutral contract code. `server/`, `bridge/`, and `adapters/core/` depend inward on protocol only; `adapters/fake/` depends on the neutral SDK and protocol and is simulation-only. `server/src/auth/` and `server/migrations/002_auth_identity.sql` contain M08 identity and authorization primitives. `server/src/http/` and migration 003 contain the M09 transport API and durable command acknowledgements; `companion/` contains the Keychain credential vault and native GUI/local bridge. `bridge/src/storage/` contains the M07 SQLite inbox/outbox and recovery primitives. `adapters/cline/` and `extensions/vscode/` implement the explicitly adopted Cline 4.1.22 M19 patch/API boundary; consult its real-host evidence before claiming support. `tests/` holds repository-level smoke, adapter conformance, bridge recovery, and auth checks. Read `IMPLEMENTATION_TRACKER.md` before starting work and implement one milestone at a time.
@@ -149,3 +159,127 @@ M26 is Done for the exact frozen local subsets: official isolated VS Code1.140.0
 Preserve all retained failed attempts: owner expiry/cleanup was recovered and retested; interrupted first bridge soak was orchestration overlap with disposable database restart, then full hour rerun; preliminary monitor intentionally observed takeover/restart gaps; final checker was repaired to compare durable command count instead of detached snapshot projection cursor. These did not change product source/packages/images. Final gate recomputes90product/lock/contractfiles, archives, installed native/addon/companion and all5imageIDs. Actual same-pair graphical lifecycle is reused from immediately preceding M24, not invented as a separate M26 install.
 
 Final native bridge is disconnected, task/history preserved, approvals disabled, Auto-approve None, zero unrevoked M26 scoped keys, disposable PostgreSQL stopped and five persistent services healthy. Passwords/bearers/private credential files were not copied into evidence. Current default caller functions remain withheld; historical M30 companion0.7.0 qualification does not enable current0.7.3 automatically. One real Cline task, exact Node SDK/Aider shim text subsets, labeled estimates and local loopback only. No Internet production/Marketplace publication, extra native platforms/versions, named tool clients, new Mac app, Codex model consumer or Claude/native Codex integration is claimed. M16–M18 remain Deferred; all27in-scope milestones are Done. Stop at this milestone boundary.
+
+
+## MB-04 bounded candidate completion — 2026-10-12
+
+MB-04 is Done for the declared experimental Cline core subset in
+`evidence/MB04/verification.json`, not production catalog adoption or the whole
+three-backend task. The user preserved existing IDE conversations. Exact PluginLab
+Cline 4.1.2204/API 1.3, host/driver 0.1.0 and signed VS Code 1.140.0 passed real
+prompts/questions/cancel, provider text APIs, withheld approvals, reload reconciliation,
+user-approved scoped cleanup/uninstall/reinstall/fresh pairing, remote echo and local
+takeover/stale admission fencing. Core queued/expiry/wrong-selection/recovery checks
+remain labeled fixture evidence. Root Node 24.19.0/npm 11.12.1 passed 169 with 55
+optional DB skips. Native qualification JSON records have existing project-integrity
+signatures; production catalog is empty. Broader switching/crash/isolation acceptance
+remains MB-08, optional controls/media MB-07 and release adoption MB-09. Codex/Claude
+remain blocked by supported existing-IDE interface gaps; do not substitute runtimes.
+The evaluation host is left disconnected after takeover. Credential entry remains
+user-only; no existing history, stock editor or CA trust was altered.
+
+
+## MI-01 server multi-binding hardening — 2026-11-04
+
+The user chose one live chat per VS Code window (several in one window are out of
+scope) and started MI-01, which is Done for its server scope. Read
+`docs/feasibility/multi-instance-concurrency.md` §7.1, `docs/server-http-api.md`
+("Multiple bindings") and tracker MI-01-DONE-001. Optional `Binding.nativeScopeId` plus
+migration 010 give one live binding per native conversation (`409
+CONVERSATION_BOUND_ELSEWHERE`, same-owner explicit `takeover`, expired holders stale,
+audited, guarded rollback). Device and credential rows are shared-locked, so bindings of
+one device no longer wait behind each other's dispatch permits; revocation still does.
+Pending limits count only active bindings and add per-session caps. Registration returns
+stored `laneWatermarks` and bounded `display` labels. Node 24.22.1: root 261 passed and
+1 skipped with all database suites, MI-01 suite 8/8, gateway 54, UI browser 4. Port
+55432 is occupied by an unrelated container, so the disposable test database ran on
+55433. No companion, native patch, package or deployment change; the tree no longer
+matches the M26 frozen candidate. MI-02, MI-03, MI-04 and MI-06 remain Not started.
+
+
+## MI-02 bridge and companion multi-window — 2026-11-05
+
+MI-02 is Done in source and tests. Read `docs/feasibility/multi-instance-concurrency.md`
+§7.2, `docs/bridge-storage.md`, `docs/cline-connect.md` ("Several windows") and tracker
+MI-02-DONE-001. Bridge inboxes can be scoped to one session, with other sessions as
+pruned sequence receipts and cursors starting at registration watermarks. `bridge/src/locks/`
+provides OS-released cross-process SQLite locks. The companion uses per-binding inboxes,
+single-flight sign-in and pairing (`$TMPDIR/sdc-oidc-callback-15945.lock`),
+`/v2/health` feature negotiation, the Cline native scope, display labels, consent-gated
+takeover, a cross-window "Revoke and forget" broadcast and "Show Connections". The
+generic host has parity, and its recovery records are scoped to live hosts. Node 24.22.1:
+root 274 passed and 1 skipped with all database suites (one earlier run hit the
+load-sensitive `tests/http-api.test.mjs:108` SSE-slot timing), MI-02 13/13, gateway 54,
+UI 4. No package, native grant or deployment change. MI-03 (real multi-window
+acceptance), MI-04 and MI-06 remain Not started.
+
+
+## MI-03 checkpoint — 2026-11-05
+
+MI-03 is In Progress; read `evidence/MI03/README.md` and tracker MI-03-START-001. The
+candidate pair (unchanged signed M24 Cline VSIX plus unsigned companion 0.8.0) and the
+`sdc-server:mi03-candidate` image are prepared and smoke-tested only. The running
+deployment still uses `sdc-server:m24-local-1` and the isolated VS Code still has
+companion 0.7.3. Upgrading the server, installing 0.8.0 and every graphical consent or
+sign-in need fresh user approval or action. MI-04 and MI-06 remain Not started.
+
+
+## Multi-instance handoff — 2026-11-12
+
+Start the multi-instance (MI) workstream at `evidence/MI03/HANDOFF.md`. MI-01 and MI-02
+are Done. MI-03 is In Progress: the local server runs `sdc-server:mi03-candidate` and the
+isolated VS Code has companion 0.8.0, both user-approved and recorded in
+`evidence/MI03/upgrade.json`. The user-driven graphical cases and their evidence
+(`evidence/MI03/sessions-*.json`) have not been captured yet.
+
+## MI-03 bounded completion — 2026-11-12
+
+MI-03 is Done **only for the exact two-to-three-window, six-case runbook subset**,
+explicitly selected by the user after the broader plan gate was explained. Read
+`evidence/MI03/verification.json`, `README.md`, current `HANDOFF.md` and tracker
+MI-03-DONE-001. The candidate remains isolated VS Code1.140.0/macOSarm64,
+Cline4.1.2204/API1.3 plus unsigned companion0.8.0 and the already deployed
+`sdc-server:mi03-candidate`; native/package hashes are unchanged.
+
+Real UI/API routing, three shared-device scoped bindings, duplicate-task refusal/
+Cancel and explicit move, old-binding prompt refusal403, reload isolation, connections
+list and cross-window revoke/forget/fresh pairing passed. Thirteen native API text
+operations completed/applied; all seven temporary keys revoked/rejected401. Final
+bridges disconnected, zero live test bindings/inbox files/open SQLite handles; five
+persistent services retained. Old device revoked/forgotten; fresh re-paired device
+credentials remain saved by the companion. Native/server history and ordinary editor
+are preserved. Passwords/consents remained user-only; unreliable native computer input
+required human assistance. Native Resume Task is required after reopening history.
+
+Fresh Node24.22.1 focused units9 and HTTP/PostgreSQL12 passed, zero failures/skips;
+temporary database55433 stopped/removed; new script syntax and evidence audit passed.
+Full root/build/lint/gateway/SDK/Swift/restart/restore were not rerun. Failed attempts
+and corrections remain recorded; invalid saved refresh credentials still need the
+existing graphical recovery flow, not a claimed source repair.
+
+Explicitly unqualified: held-native-permit/control latency/backlog against M26,
+simultaneous sign-in, server-only revocation, upgrade skew, five-to-ten-window load,
+queued old-binding tombstones beyond new-admission refusal and approvals enabled.
+Generic host/other installations/versions/platforms/vendor profiles are not inferred.
+MI-04 (same workspace/continuity) and MI-06 (retention) remain Not started and require
+a new instruction. MB-05 and Codex/Claude gates are unchanged. No signing/publication
+or new release adoption is authorized by this bounded completion. Earlier MI-03
+In Progress/checkpoint statements are historical.
+
+## MI-04 implementation checkpoint — 2026-11-12
+
+The user requested finishing MI-04 sequentially and stopping there. MI-04 is In
+Progress. Read evidence/MI04/README.md, verification.json, artifact-manifest.json and
+tracker MI-04-CHECKPOINT-002. Scoped, locally consented Connect negotiates stable
+session continuity with revision fencing and frozen old keys. Native scope context,
+grouped UI/overlap/offline filtering, companion adoption and affected tests are
+implemented. N2 park/resume is excluded; MI-06 and MB work remain separate.
+
+Prepared unsigned candidates: Cline4.1.2206/API1.3, companion0.9.0 and
+sdc-server:mi04-candidate. Root280 passed/one optional skip, gateway54, UI5 and
+focused suites passed; the final two guards were rebuilt and checked with focused
+tests. Real-native acceptance is pending. No candidate deployment/installation,
+trust, credentials or local grant changed. Fresh candidate-upgrade approval was
+requested under the MI-03 handoff's explicit rule; preserve any subsequent approval.
+Passwords and each native local consent remain human-only. Disposable worktrees are
+recorded in evidence/MI04/lab.json. Do not claim MI-04 Done from fixtures.

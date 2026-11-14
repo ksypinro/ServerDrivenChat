@@ -1,0 +1,24 @@
+{
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/usr/bin/python3",
+                        "args": ["${CLAUDE_PROJECT_DIR}/extensions/claude-authority-evaluation/authority_guard.py"],
+                        "timeout": 1,
+                        "onFailure": "block"
+                    },
+                    {
+                        "type": "command",
+                        "command": "/usr/bin/python3",
+                        "args": ["${CLAUDE_PROJECT_DIR}/extensions/claude-authority-evaluation/slow_hook.py"],
+                        "timeout": 12,
+                        "onFailure": "block"
+                    }
+                ]
+            }
+        ]
+    }
+}

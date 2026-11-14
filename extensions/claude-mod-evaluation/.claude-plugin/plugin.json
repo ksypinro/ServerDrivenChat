@@ -1,0 +1,8 @@
+{
+    "name": "sdc-session-observer",
+    "version": "0.1.0",
+    "description": "Read-only SDC evaluation probe for Claude Code native session identity and lifecycle.",
+    "author": {
+        "name": "Server-Driven Chat contributors"
+    }
+}

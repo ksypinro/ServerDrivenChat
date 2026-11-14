@@ -1,4 +1,6 @@
 import { protocolModule } from "@server-driven-chat/protocol";
+export * from "./driver.js";
+export * from "./host.js";
 import type {
   AdapterMutationContext, AdapterOutcome, AppAdapter, Binding, BindingSelection, CapabilitiesDocument,
   LaneCursor, ProducerCursor, ProtocolCommand, ProtocolEvent, ApprovalRequest, ApprovalDecisionProposal,
@@ -25,6 +27,7 @@ export const ADAPTER_OPERATION_CONTRACTS = {
   resolveApproval: "Resolve the exact native approval request and revision; never infer broad authority.",
   cancel: "Cancel the exact native turn and report confirmed, rejected, unsupported, or unknown.",
   revoke: "Revoke the exact native grant and report confirmed, rejected, unsupported, or unknown.",
+  stageAttachment: "Stage verified authenticated bytes for the exact native binding and report a receipt.",
   detach: "End this binding without deleting or replacing its native conversation."
 } as const;
 

@@ -3812,6 +3812,12 @@
           "maxLength": 200,
           "pattern": "^[^\\u0000-\\u001f]+$"
         },
+        "nativeScopeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
         "bindingRevision": {
           "type": "integer",
           "minimum": 1,

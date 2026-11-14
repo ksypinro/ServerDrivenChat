@@ -1,0 +1,17 @@
+{
+    "name": "sdc-local-evaluation",
+    "owner": {
+        "name": "Server-Driven Chat contributors"
+    },
+    "metadata": {
+        "description": "Local, read-only Claude Code evaluation for SDC MB-05."
+    },
+    "plugins": [
+        {
+            "name": "sdc-session-observer",
+            "source": "./",
+            "description": "Read-only probe for Claude session identity and lifecycle events.",
+            "version": "0.1.0"
+        }
+    ]
+}

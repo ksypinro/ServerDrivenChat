@@ -10,6 +10,12 @@ M11 adds migration 006 to support pending grant-ledger entries. Approval-require
 
 M13 adds migration 007 for durable adapter staging receipts. Attachment bytes live outside PostgreSQL in the configured private filesystem root; `attachment_metadata` binds the opaque ID, session, uploader, checksum, MIME type, size, and retention state. The service re-verifies content on commit/download/staging and removes expired incomplete uploads and retained blobs. A failed filesystem/database commit can leave an opaque orphan for retry or retention cleanup; no path or credential is exposed to the model.
 
+## MI-01 multi-binding hardening (2026-11-04)
+
+Migration 010 adds `bindings.native_conversation_key` with a unique index over active keys. Registration derives the key from the SHA-256 of canonical `{appId, nativeScopeId, nativeConversationId}` and holds an advisory lock on it, so one native conversation has at most one active binding across sessions, devices and owners. Bindings without `nativeScopeId` keep a NULL key and remain unconstrained. The guarded [rollback](../server/migrations/rollback/010_native_conversation_exclusivity.sql) refuses while a keyed binding is active.
+
+Fenced writes, lease renewal, registration and detach take `FOR SHARE` on the device and credential rows and keep the binding row exclusive. Bindings of one device therefore no longer wait behind each other's dispatch permits, while device revocation and credential rotation, which update those rows, still wait for admitted work. `assertPendingCapacity` counts pending commands per device lane and per session, only for sessions with an active binding; the v2 API, approval engine and public API share it.
+
 ## Real PostgreSQL checks
 
 The integration suite is not a mock and is kept out of the default portable test run. Start the dedicated local PostgreSQL 17.11 container (host port bound to loopback only):

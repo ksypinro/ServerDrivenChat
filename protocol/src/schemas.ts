@@ -68,7 +68,7 @@ const defs: Record<string, Schema> = {
   }, ["protocolVersion", "adapterId", "adapterVersion", "appId", "appVersion", "platform", "operations", "observedAt"]),
   Binding: object({
     bindingId: id(), sessionId: id(), appId: id(), appInstanceId: id(), accountId: id(), workspaceId: id(), conversationId: id(), nativeConversationId: id(),
-    bindingRevision: integer(1), leaseGeneration: integer(1), capabilitiesRevision: id()
+    nativeScopeId: id(), bindingRevision: integer(1), leaseGeneration: integer(1), capabilitiesRevision: id()
   }, ["bindingId", "sessionId", "appId", "appInstanceId", "conversationId", "nativeConversationId", "bindingRevision", "leaseGeneration", "capabilitiesRevision"]),
   SessionSnapshot: object({
     sessionId: id(), bindingRevision: integer(1), leaseGeneration: integer(1), turnState: ref("TurnState"),

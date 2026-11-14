@@ -1,0 +1,35 @@
+{
+  "milestone": "MB-04",
+  "status": "unsigned-review-only",
+  "nativeQualified": false,
+  "installation": "not-assessed-by-packaging",
+  "productionCatalog": "empty",
+  "packages": [
+    {
+      "extensionId": "server-driven-chat.sdc-backend-host",
+      "version": "0.1.0",
+      "path": "extensions/vscode-host/dist/mb04-candidate/sdc-backend-host-0.1.0-darwin-arm64.vsix",
+      "sha256": "036eaffc2053e217f193435cea46d03872a6eb8d1ab371a961d1594813c51742",
+      "files": {
+        "LICENSE": "1cfc1dd771f2048e83440d454400ced8c5f19611d6e90af078e1564e85704814",
+        "README.md": "595a1c9683ce5c9493408c30fffb1775454c4e4f6ff7f3fc5cbc8b8ceef1a907",
+        "THIRD_PARTY_NOTICES.md": "2075d0320c119fbcd2c01075b94db15a9d3d88636a9f02272508557f080e98a3",
+        "dist/extension.cjs": "c10c308dc88d8e68ee4e37837354bd175a6118eab2913bc65b73906d24cf613f",
+        "package.json": "192f57cb5ae2b5fe7a38d9aa6fced371737fae49b2baf923fdbf065bc77401ff"
+      }
+    },
+    {
+      "extensionId": "server-driven-chat.sdc-cline-driver",
+      "version": "0.1.0",
+      "path": "extensions/vscode-host/dist/mb04-candidate/sdc-cline-driver-0.1.0-darwin-arm64.vsix",
+      "sha256": "379a3426d92c2333598645f3b6497a58dd0f2128380dcf7b243911613df8b894",
+      "files": {
+        "LICENSE": "1cfc1dd771f2048e83440d454400ced8c5f19611d6e90af078e1564e85704814",
+        "README.md": "43bc80719a57574149688ff85b5f90f36a8150855cd4c6a8797036384466f482",
+        "THIRD_PARTY_NOTICES.md": "2075d0320c119fbcd2c01075b94db15a9d3d88636a9f02272508557f080e98a3",
+        "dist/extension.cjs": "8f2d7a0d3c97f4741ae29aa64f651a774de43ba9a87df002b68fb36f3be7f5df",
+        "package.json": "347cf05fcc003caf7999a6166455dbf41b29b771d6a9d2f4e912b873098d15f2"
+      }
+    }
+  ]
+}

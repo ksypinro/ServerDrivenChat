@@ -15,28 +15,38 @@ export class BridgeStorageCapacity extends RangeError { constructor(message: str
 export interface BridgeStorageLimits { maxRecordBytes: number; maxHistoryBytes: number; maxUnackedBytes: number; maxPendingPrompts: number; maxPendingControls: number; maxDatabasePages: number }
 export const DEFAULT_BRIDGE_STORAGE_LIMITS: Readonly<BridgeStorageLimits> = Object.freeze({ maxRecordBytes: 1024 * 1024, maxHistoryBytes: 64 * 1024 * 1024, maxUnackedBytes: 32 * 1024 * 1024, maxPendingPrompts: 1000, maxPendingControls: 2000, maxDatabasePages: 65536 });
 
-/** SQLite-backed local bridge state. All multi-record transitions use synchronous transactions. */
+/** SQLite-backed local bridge state. All multi-record transitions use synchronous transactions.
+ * An unscoped store is a device router shared by several bindings. A store scoped to one session keeps
+ * other sessions' commands on the same device lanes only as sequence receipts, so their work never fills it. */
 export class BridgeStore {
     readonly #db: DatabaseSync;
     readonly #fault?: (point: FaultPoint) => void;
     readonly #limits: BridgeStorageLimits;
+    readonly #sessionScope?: string;
 
-    constructor(options: { path: string; fault?: (point: FaultPoint) => void; limits?: Partial<BridgeStorageLimits> }) {
+    constructor(options: { path: string; sessionId?: string; fault?: (point: FaultPoint) => void; limits?: Partial<BridgeStorageLimits> }) {
         this.#limits = { ...DEFAULT_BRIDGE_STORAGE_LIMITS, ...options.limits };
         if (!Object.values(this.#limits).every(value => Number.isSafeInteger(value) && value > 0)) throw new RangeError("Bridge storage limits must be positive integers");
+        if (options.sessionId !== undefined && (typeof options.sessionId !== "string" || !options.sessionId)) throw new TypeError("Bridge inbox session scope is invalid");
         this.#db = new DatabaseSync(options.path);
         this.#fault = options.fault;
         this.#db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
         this.#migrate();
+        try { this.#sessionScope = this.#bindScope(options.sessionId); }
+        catch (error) { this.#db.close(); throw error; }
         const pages = this.#db.prepare(`PRAGMA max_page_count=${this.#limits.maxDatabasePages}`).get() as { max_page_count: number };
         if (pages.max_page_count > this.#limits.maxDatabasePages) { this.#db.close(); throw new BridgeStorageCapacity("Existing bridge database exceeds its configured page budget; preserve it for reconciliation"); }
         this.#db.exec("PRAGMA wal_autocheckpoint=1000; PRAGMA journal_size_limit=16777216;");
     }
 
+    /** The one session whose commands this inbox retains, when it is scoped. */
+    get sessionScope(): string | undefined { return this.#sessionScope; }
+
     close(): void { this.#db.close(); }
 
-    acceptCommand(input: CommandInput): "created" | "duplicate" {
+    acceptCommand(input: CommandInput): "created" | "duplicate" | "receipt" {
         this.#validateSeq(input.laneSeq);
+        if (this.#sessionScope !== undefined && input.sessionId !== this.#sessionScope) return this.#acceptForeign(input);
         const payload = canonicalJson(input.payload);
         return this.#transaction(() => {
             const prior = this.#db.prepare("SELECT session_id,device_id,lane,lane_seq,payload FROM inbox_commands WHERE command_id=?").get(input.commandId) as Record<string, unknown> | undefined;
@@ -45,7 +55,7 @@ export class BridgeStore {
                 return "duplicate";
             }
             if (this.#db.prepare("SELECT 1 FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq)) throw new BridgeStorageConflict("command sequence was authoritatively skipped");
-            const seqPrior = this.#db.prepare("SELECT command_id FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq) as { command_id: string } | undefined;
+            const seqPrior = this.#db.prepare("SELECT command_id FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT command_id FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq, input.deviceId, input.lane, input.laneSeq) as { command_id: string } | undefined;
             if (seqPrior) throw new BridgeStorageConflict("lane sequence was reused by another command");
             this.#checkPayload(payload);
             const pending = this.#db.prepare("SELECT count(*) AS count FROM command_dispatch WHERE device_id=? AND lane=? AND state IN ('queued','applying','reconciliation_required')").get(input.deviceId, input.lane) as { count: number };
@@ -58,8 +68,67 @@ export class BridgeStore {
             while (this.#hasReceipt(input.deviceId, input.lane, cursor + 1)) cursor += 1;
             this.#fault?.("before_cursor_advance");
             this.#db.prepare("UPDATE receipt_cursors SET last_contiguous_seq=? WHERE device_id=? AND lane=?").run(cursor, input.deviceId, input.lane);
+            this.#pruneForeignReceipts(input.deviceId, input.lane, cursor);
             this.#db.prepare("INSERT INTO command_dispatch(command_id,device_id,lane,lane_seq,state) VALUES(?,?,?,?,'queued')").run(input.commandId, input.deviceId, input.lane, input.laneSeq);
             return "created";
+        });
+    }
+
+    /** Another session's command on the shared device lane: keep sequence continuity only, never its payload or work. */
+    #acceptForeign(input: CommandInput): "duplicate" | "receipt" {
+        return this.#transaction(() => {
+            const prior = this.#db.prepare("SELECT command_id,session_id FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq) as { command_id: string; session_id: string } | undefined;
+            if (prior) {
+                if (prior.command_id !== input.commandId || prior.session_id !== input.sessionId) throw new BridgeStorageConflict("lane sequence was reused by another command");
+                return "duplicate";
+            }
+            if (this.#db.prepare("SELECT 1 FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq)) throw new BridgeStorageConflict("command sequence was authoritatively skipped");
+            if (this.#db.prepare("SELECT 1 FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq)) throw new BridgeStorageConflict("lane sequence was reused by another command");
+            this.#db.prepare("INSERT INTO receipt_cursors(device_id,lane,last_contiguous_seq) VALUES(?,?,0) ON CONFLICT(device_id,lane) DO NOTHING").run(input.deviceId, input.lane);
+            // Receipts at or below the cursor were pruned; a repeated delivery there is already accounted for.
+            if (input.laneSeq <= this.getCursor(input.deviceId, input.lane)) return "duplicate";
+            this.#db.prepare("INSERT INTO foreign_receipts(device_id,lane,lane_seq,command_id,session_id) VALUES(?,?,?,?,?)").run(input.deviceId, input.lane, input.laneSeq, input.commandId, input.sessionId);
+            let cursor = this.getCursor(input.deviceId, input.lane);
+            while (this.#hasReceipt(input.deviceId, input.lane, cursor + 1)) cursor += 1;
+            this.#db.prepare("UPDATE receipt_cursors SET last_contiguous_seq=? WHERE device_id=? AND lane=?").run(cursor, input.deviceId, input.lane);
+            this.#pruneForeignReceipts(input.deviceId, input.lane, cursor);
+            return "receipt";
+        });
+    }
+
+    /** Sequence-only receipts matter only above the contiguous cursor. */
+    #pruneForeignReceipts(deviceId: string, lane: BridgeLane, cursor: number): void {
+        this.#db.prepare("DELETE FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq<=?").run(deviceId, lane, cursor);
+    }
+
+    /** Start a fresh inbox at its binding's registration watermarks: every command of that binding has a later
+     * sequence. A lane that already has a cursor or receipts keeps its position. */
+    initializeCursors(deviceId: string, watermarks: { prompt: number; control: number }): void {
+        for (const value of [watermarks.prompt, watermarks.control]) if (!Number.isSafeInteger(value) || value < 0) throw new TypeError("watermark must be a nonnegative safe integer");
+        this.#transaction(() => {
+            for (const lane of ["prompt", "control"] as const) {
+                const received = this.#db.prepare("SELECT 1 FROM inbox_commands WHERE device_id=? AND lane=? UNION ALL SELECT 1 FROM command_skips WHERE device_id=? AND lane=? UNION ALL SELECT 1 FROM foreign_receipts WHERE device_id=? AND lane=? LIMIT 1").get(deviceId, lane, deviceId, lane, deviceId, lane);
+                if (!received) this.#db.prepare("INSERT INTO receipt_cursors(device_id,lane,last_contiguous_seq) VALUES(?,?,?) ON CONFLICT(device_id,lane) DO NOTHING").run(deviceId, lane, watermarks[lane]);
+            }
+        });
+    }
+
+    /** Native attempts still applying or with an uncertain outcome. Retain their inbox for reconciliation. */
+    countUnresolvedAttempts(sessionId?: string): number {
+        const row = this.#db.prepare("SELECT count(*) AS count FROM application_attempts WHERE state IN ('applying','reconciliation_required') AND (? IS NULL OR session_id=?)").get(sessionId ?? null, sessionId ?? null) as { count: number };
+        return Number(row.count);
+    }
+
+    #bindScope(sessionId?: string): string | undefined {
+        return this.#transaction(() => {
+            const row = this.#db.prepare("SELECT session_id FROM store_scope WHERE singleton=1").get() as { session_id: string } | undefined;
+            if (row && sessionId !== undefined && row.session_id !== sessionId) throw new BridgeStorageConflict("Bridge inbox belongs to another session");
+            if (!row && sessionId !== undefined) {
+                // Scoping an inbox that already routes other sessions would strand their queued work.
+                if (this.#db.prepare("SELECT 1 FROM inbox_commands WHERE session_id<>? LIMIT 1").get(sessionId)) throw new BridgeStorageConflict("Bridge inbox already holds other sessions; open a new inbox for a scoped binding");
+                this.#db.prepare("INSERT INTO store_scope(singleton,session_id) VALUES(1,?)").run(sessionId);
+            }
+            return row?.session_id ?? sessionId;
         });
     }
 
@@ -146,7 +215,7 @@ export class BridgeStore {
         this.#transaction(() => {
             const prior = this.#db.prepare("SELECT command_id,reason FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId,input.lane,input.laneSeq) as {command_id: string; reason: string} | undefined;
             if (prior && (prior.command_id !== input.commandId || prior.reason !== input.reason)) throw new BridgeStorageConflict("conflicting skip identity");
-            const command = this.#db.prepare("SELECT command_id FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId,input.lane,input.laneSeq) as {command_id: string} | undefined;
+            const command = this.#db.prepare("SELECT command_id FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT command_id FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId,input.lane,input.laneSeq,input.deviceId,input.lane,input.laneSeq) as {command_id: string} | undefined;
             if (command && command.command_id !== input.commandId) throw new BridgeStorageConflict("skip conflicts with received command identity");
             this.#db.prepare("INSERT INTO command_skips(device_id,lane,lane_seq,command_id,reason) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING").run(input.deviceId,input.lane,input.laneSeq,input.commandId,input.reason);
             this.#db.prepare("UPDATE command_dispatch SET state='rejected',ack_state='rejected',ack_sent_state='rejected' WHERE command_id=? AND state='queued'").run(input.commandId);
@@ -154,11 +223,12 @@ export class BridgeStore {
             let cursor = this.getCursor(input.deviceId,input.lane);
             while (this.#hasReceipt(input.deviceId,input.lane,cursor+1)) cursor++;
             this.#db.prepare("UPDATE receipt_cursors SET last_contiguous_seq=? WHERE device_id=? AND lane=?").run(cursor,input.deviceId,input.lane);
+            this.#pruneForeignReceipts(input.deviceId,input.lane,cursor);
         });
     }
 
     #hasReceipt(deviceId: string, lane: BridgeLane, seq: number): boolean {
-        return !!this.#db.prepare("SELECT 1 FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT 1 FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=?").get(deviceId,lane,seq,deviceId,lane,seq);
+        return !!this.#db.prepare("SELECT 1 FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT 1 FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT 1 FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(deviceId,lane,seq,deviceId,lane,seq,deviceId,lane,seq);
     }
 
     getCursor(deviceId: string, lane: BridgeLane): number {
@@ -290,6 +360,9 @@ export class BridgeStore {
         if (!dispatchColumns.has("ack_state")) this.#db.exec("ALTER TABLE command_dispatch ADD COLUMN ack_state TEXT NOT NULL DEFAULT 'received'");
         if (!dispatchColumns.has("ack_details")) this.#db.exec("ALTER TABLE command_dispatch ADD COLUMN ack_details TEXT");
         if (!dispatchColumns.has("ack_sent_state")) this.#db.exec("ALTER TABLE command_dispatch ADD COLUMN ack_sent_state TEXT");
+        this.#db.exec(`CREATE TABLE IF NOT EXISTS store_scope(singleton INTEGER PRIMARY KEY CHECK(singleton=1),session_id TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS foreign_receipts(device_id TEXT NOT NULL,lane TEXT NOT NULL CHECK(lane IN ('prompt','control')),lane_seq INTEGER NOT NULL CHECK(lane_seq>0),command_id TEXT NOT NULL,session_id TEXT NOT NULL,PRIMARY KEY(device_id,lane,lane_seq));
+            INSERT INTO schema_migrations(version,checksum) VALUES(3,'mi02-session-scope-v3') ON CONFLICT(version) DO NOTHING;`);
     }
 
     #transaction<T>(operation: () => T): T {

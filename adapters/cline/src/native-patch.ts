@@ -31,6 +31,7 @@ export interface PinnedController {
 }
 export interface NativeEnvironment {
     installationId: string; hostId: string; windowId: string;
+    nativeScopeId?: string;
     workspaceId(): string;
     onWorkspaceChanged(listener: () => void): { dispose(): void };
     remote: boolean;
@@ -67,7 +68,7 @@ export function createClineTaskBridge(controller: PinnedController, env: NativeE
     let currentTask = controller.task;
     let taskGeneration = randomUUID();
     let disposed = false;
-    const context = (): Omit<NativeContext, "taskId" | "generation"> => ({ installationId: env.installationId, hostId: env.hostId, windowId: env.windowId, workspaceId: env.workspaceId() });
+    const context = (): Omit<NativeContext, "taskId" | "generation"> => ({ installationId: env.installationId, hostId: env.hostId, windowId: env.windowId, workspaceId: env.workspaceId(), ...(env.nativeScopeId ? { nativeScopeId: env.nativeScopeId } : {}) });
     const emit = (bound: BoundTask, value: NativeEvent extends infer E ? E extends NativeEvent ? Omit<E, "seq"> : never : never): void => {
         const event = { ...value, seq: ++bound.seq } as NativeEvent;
         bound.events.push(event); if (bound.events.length > 512) bound.events.shift();

@@ -1,0 +1,8 @@
+{
+    "name": "sdc-queue-probe",
+    "version": "0.1.0",
+    "description": "One-shot MB-05 native busy-queue refusal diagnostic; not a driver.",
+    "author": {
+        "name": "Server-Driven Chat contributors"
+    }
+}
