@@ -1,0 +1,34 @@
+import {writeFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {performance} from 'node:perf_hooks';
+import {createHash} from 'node:crypto';
+import {apiFixture,command} from '../tests/helpers/api-fixture.mjs';
+import {canonicalJson} from '../protocol/dist/index.js';
+const url=process.env.MI06_TEST_DATABASE_URL;if(!url)throw Error('MI06_TEST_DATABASE_URL must identify a disposable database');
+const p95=values=>[...values].sort((a,b)=>a-b)[Math.ceil(values.length*.95)-1];
+const median=values=>[...values].sort((a,b)=>a-b)[Math.floor(values.length/2)];
+const rounds=[];
+for(let round=0;round<5;round++){
+ const f=await apiFixture(url);try{
+  await f.bind('measurement');const n=10000,ids=[],payloads=[],hashes=[],sizes=[],turns=[];
+  for(let i=0;i<n;i++){const c=command('measurement',`seed-${i}`),json=canonicalJson(c);ids.push(c.commandId);payloads.push(json);hashes.push(createHash('sha256').update(json).digest('hex'));sizes.push(Buffer.byteLength(json));turns.push(c.turnId);}
+  await f.db.pool.query("INSERT INTO commands(command_id,session_id,device_id,lane,lane_seq,payload,payload_sha256,original_payload_bytes,turn_id) SELECT id,'measurement',$1,'prompt',ord,payload::jsonb,hash,bytes,turn FROM unnest($2::text[],$3::text[],$4::text[],$5::bigint[],$6::text[]) WITH ORDINALITY AS t(id,payload,hash,bytes,turn,ord)",[f.issued.deviceId,ids,payloads,hashes,sizes,turns]);
+  await f.db.pool.query("INSERT INTO lane_counters VALUES($1,'prompt',$2)",[f.issued.deviceId,n]);await f.db.pool.query("INSERT INTO command_acknowledgements(device_id,lane,lane_seq,state,payload) SELECT device_id,lane,lane_seq,CASE WHEN lane_seq%2=0 THEN 'applied' ELSE 'rejected' END,'{}'::jsonb FROM commands");await f.db.pool.query(`INSERT INTO events(event_id,session_id,bridge_epoch,producer_seq,session_seq,payload) SELECT 'terminal-'||lane_seq,session_id,'perf',lane_seq,lane_seq,jsonb_build_object('protocolVersion','2.0','type','turn.completed','sessionId',session_id,'eventId','terminal-'||lane_seq,'bridgeEpoch','perf','producerSeq',lane_seq,'bindingRevision',1,'leaseGeneration',1,'createdAt',to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'payload',jsonb_build_object('turnId',turn_id,'terminalEvidence','SIMULATED performance fixture')) FROM commands WHERE lane_seq%2=0`);await f.db.pool.query('ANALYZE commands');await f.db.pool.query('ANALYZE events');
+  const plan=(await f.db.pool.query("EXPLAIN SELECT command_id FROM commands WHERE device_id=$1 AND lane='prompt' AND lane_seq>5000 AND archived_at IS NULL ORDER BY lane_seq LIMIT 100",[f.issued.deviceId])).rows.map(r=>r['QUERY PLAN'].replaceAll(f.issued.deviceId,'<device>'));
+  const evidencePlan=(await f.db.pool.query(`EXPLAIN SELECT c.command_id,(SELECT e.payload FROM events e WHERE e.session_id=c.session_id AND e.created_at>=c.created_at AND e.payload->>'sessionId'=c.session_id AND e.payload->>'bindingRevision'=c.payload->>'bindingRevision' AND e.payload->>'leaseGeneration'=c.payload->>'leaseGeneration' AND ((e.payload->>'type' IN ('turn.completed','turn.failed','turn.cancelled') AND e.payload->'payload'->>'turnId'=c.turn_id) OR (e.payload->>'type'='command.rejected' AND e.payload->'payload'->>'commandId'=c.command_id)) ORDER BY e.created_at DESC,e.session_seq DESC LIMIT 1) FROM commands c WHERE c.device_id=$1 AND c.lane='prompt' AND c.lane_seq>5000 AND c.archived_at IS NULL ORDER BY c.lane_seq LIMIT 100`,[f.issued.deviceId])).rows.map(r=>r['QUERY PLAN'].replaceAll(f.issued.deviceId,'<device>'));
+  let id=0;const samples={baseline:{admission:[],renew:[]},loaded:{admission:[],renew:[]}};
+  async function pair(bucket){await Promise.all([
+   (async()=>{const start=performance.now(),c=command('measurement',`peer-${id++}`,'control');await f.db.recordCommand({commandId:c.commandId,sessionId:c.sessionId,deviceId:f.issued.deviceId,lane:'control',payload:c});bucket?.admission.push({start,end:performance.now()});})(),
+   (async()=>{const start=performance.now();const r=await f.request(`/v2/devices/${f.issued.deviceId}/lease/renew`,{sessionId:'measurement',bindingRevision:1,leaseGeneration:1});assert.equal(r.status,200);await r.arrayBuffer();bucket?.renew.push({start,end:performance.now()});})()
+  ]);}
+  for(let i=0;i<15;i++)await pair();for(let i=0;i<60;i++)await pair(samples.baseline);
+  const intervals=[],batches=[];const transaction=f.db.transaction.bind(f.db);
+  f.db.transaction=work=>transaction(async client=>{const query=client.query.bind(client);let started;client.query=async(...args)=>{const result=await query(...args);if(String(args[0]).includes('pg_try_advisory_xact_lock')&&result.rows[0]?.locked)started=performance.now();return result;};try{return await work(client);}finally{if(started!==undefined)intervals.push({start:started,end:performance.now()});client.query=query;}});
+  let done=false;const compaction=(async()=>{for(let i=0;i<n/100;i++)batches.push(await f.db.compactCommandLane({deviceId:f.issued.deviceId,lane:'prompt',minAgeSeconds:0,keepLast:0,batchSize:100,now:new Date(Date.now()+1000),includeMetrics:true}));})().finally(()=>{done=true;});
+  try{while(!done)await pair(samples.loaded);}finally{await compaction;}
+  const timings={};for(const operation of ['admission','renew']){const baseline=samples.baseline[operation].map(s=>s.end-s.start);const loaded=samples.loaded[operation].filter(s=>intervals.some(i=>s.start<i.end&&s.end>i.start)).map(s=>s.end-s.start);assert.ok(loaded.length>=30,`Insufficient compaction-overlapping ${operation} samples: ${loaded.length}`);timings[operation]={baselineP95:p95(baseline),loadedP95:p95(loaded),baselineCount:baseline.length,overlapCount:loaded.length};timings[operation].addedP95=timings[operation].loadedP95-timings[operation].baselineP95;}
+  assert.equal(batches.reduce((a,b)=>a+b.compacted,0),n);rounds.push({round,timings,plan,evidencePlan,batchDurationMs:batches.map(b=>b.metrics?.durationMs),busySkips:batches.filter(b=>b.busy).length,lockIntervals:intervals,samples});
+ }finally{await f.close();}
+}
+const summary={};for(const op of ['admission','renew'])summary[op]={medianLoadedP95:median(rounds.map(r=>r.timings[op].loadedP95)),medianAddedP95:median(rounds.map(r=>r.timings[op].addedP95))};
+const passed=Object.values(summary).every(s=>s.medianLoadedP95<=25&&s.medianAddedP95<=10);const report={scope:'synthetic same-process five paired runs; 50% applied with terminal events, 50% rejected; actual compaction-lock overlap; not a production SLA',thresholds:{loadedP95Ms:25,addedP95Ms:10},passed,summary,rounds};if(process.env.MI06_PERFORMANCE_REPORT){await writeFile(process.env.MI06_PERFORMANCE_REPORT,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({passed,summary,report:process.env.MI06_PERFORMANCE_REPORT}));}else console.log(JSON.stringify(report,null,2));if(!passed)process.exitCode=1;

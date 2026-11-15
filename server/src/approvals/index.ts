@@ -1,4 +1,4 @@
-import { randomUUID, sign as cryptoSign, type KeyObject } from "node:crypto";
+import { createHash, randomUUID, sign as cryptoSign, type KeyObject } from "node:crypto";
 import { canonicalJson, validateDecisionAgainstRequest, type ApprovalDecisionProposal, type ApprovalRequest, type PermissionGrant } from "@server-driven-chat/protocol";
 import type { OidcPrincipal, DecisionAssertionClaims, AuthorizationService } from "../auth/index.js";
 import { StorageConflictError, StorageNotFoundError, type ServerDatabase } from "../storage/index.js";
@@ -84,9 +84,11 @@ export class ApprovalEngine {
             const lane = await client.query<{ last_seq: string }>("INSERT INTO lane_counters(device_id,lane,last_seq) VALUES($1,'control',1) ON CONFLICT(device_id,lane) DO UPDATE SET last_seq=lane_counters.last_seq+1 RETURNING last_seq",[input.deviceId]);
             const laneSeq = Number(lane.rows[0].last_seq);
             const command = { protocolVersion: "2.0", type: "approval.decide", commandId, lane: "control", seq: laneSeq, sessionId, bindingRevision: request.bindingRevision, leaseGeneration: request.leaseGeneration, createdAt: new Date(now).toISOString(), expiresAt: input.expiresAt, payload: { decisionId: input.decisionId, requestId: input.requestId, requestRevision: input.requestRevision, actionDigest: input.actionDigest, choiceId: input.choiceId, grantedPermissions: input.grantedPermissions, expiresAt: input.expiresAt, assertion } };
+            await this.database.assertRetainedCommandCapacity(client,input.deviceId,"control",command);
             const storedPayload = { ...input, sessionId, reviewerId: reviewer.userId, recordedAt: new Date(now).toISOString(), outcome: "recorded", assertion, grants, commandId, laneSeq };
             await client.query("INSERT INTO decisions(decision_id,session_id,request_id,request_revision,payload) VALUES($1,$2,$3,$4,$5::jsonb)", [input.decisionId,sessionId,input.requestId,input.requestRevision,canonicalJson(storedPayload)]);
-            await client.query("INSERT INTO commands(command_id,session_id,device_id,lane,lane_seq,payload) VALUES($1,$2,$3,'control',$4,$5::jsonb)",[commandId,sessionId,input.deviceId,laneSeq,canonicalJson(command)]);
+            const canonicalCommand=canonicalJson(command);
+            await client.query("INSERT INTO commands(command_id,session_id,device_id,lane,lane_seq,payload,payload_sha256,original_payload_bytes) VALUES($1,$2,$3,'control',$4,$5::jsonb,$6,$7)",[commandId,sessionId,input.deviceId,laneSeq,canonicalCommand,createHash("sha256").update(canonicalCommand).digest("hex"),Buffer.byteLength(canonicalCommand)]);
             const changed = await client.query("UPDATE interactions SET state='decision_recorded' WHERE session_id=$1 AND request_id=$2 AND request_revision=$3 AND state='pending'",[sessionId,input.requestId,input.requestRevision]);
             if (changed.rowCount !== 1) throw new StorageConflictError("Approval request was resolved concurrently");
             for (const grant of grants) await client.query("INSERT INTO grants(grant_id,session_id,request_id,decision_id,state,payload) VALUES($1,$2,$3,$4,'pending',$5::jsonb)",[grant.grantId,sessionId,input.requestId,input.decisionId,canonicalJson({ ...grant.grant, choiceScope:selectedChoice.scope, assertionExpiresAt:input.expiresAt, nativeEnforcement: "pending" })]);

@@ -1,6 +1,6 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
 import type { AnySchema, ErrorObject } from "ajv";
-import type { CapabilitiesDocument, ActionDigestInput, ApprovalDecisionProposal, ApprovalRequest, CommandSkip, DispatchPermit, ConnectToolResult, JsonValue, ProtocolMessage, TrustedConnectContext } from "./contracts.js";
+import type { CapabilitiesDocument, ActionDigestInput, ApprovalDecisionProposal, ApprovalRequest, CommandSkip, CommandRetentionCheckpoint, DispatchPermit, ConnectToolResult, JsonValue, ProtocolMessage, TrustedConnectContext } from "./contracts.js";
 import { canonicalJson, computeActionDigest } from "./canonical.js";
 import { isValidRfc3339Timestamp } from "./state.js";
 import { commandSkipSchema, dispatchPermitSchema, connectResultSchema, connectToolSchema, protocolSchema, trustedConnectContextSchema } from "./schemas.js";
@@ -142,6 +142,13 @@ export async function validateDecisionAgainstRequest(
 
 export function validateCommandSkip(value: unknown): ValidationResult<CommandSkip> {
   return skipValidator(value) ? {valid: true,value: value as CommandSkip} : {valid: false,issues: issues(skipValidator.errors)};
+}
+export function validateCommandRetentionCheckpoint(value: unknown): ValidationResult<CommandRetentionCheckpoint> {
+  const bad=():ValidationResult<CommandRetentionCheckpoint>=>({valid:false,issues:[{path:"",keyword:"checkpoint",message:"Invalid command retention checkpoint"}]});
+  if (!value || typeof value!=="object" || Array.isArray(value)) return bad();
+  const row=value as Record<string,unknown>;
+  if (Object.keys(row).sort().join(",")!==["archivedThrough","bindingId","bindingRevision","deviceId","head","lane","leaseGeneration","sessionId","version"].sort().join(",") || row.version!==1 || !["prompt","control"].includes(String(row.lane)) || ![row.deviceId,row.sessionId,row.bindingId].every(v=>typeof v==="string" && v.length>0 && v.length<=2048) || ![row.bindingRevision,row.leaseGeneration].every(v=>Number.isSafeInteger(v) && Number(v)>0) || ![row.archivedThrough,row.head].every(v=>Number.isSafeInteger(v) && Number(v)>=0) || Number(row.archivedThrough)>Number(row.head)) return bad();
+  return {valid:true,value:row as unknown as CommandRetentionCheckpoint};
 }
 export function validateDispatchPermit(value: unknown): ValidationResult<DispatchPermit> {
   return permitValidator(value) ? {valid: true,value: value as DispatchPermit} : {valid: false,issues: issues(permitValidator.errors)};

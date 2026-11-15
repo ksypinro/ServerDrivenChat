@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AdapterMutationContext, AdapterOutcome, AppAdapter, Binding, ProtocolCommand, ProtocolEvent } from "@server-driven-chat/protocol";
-import { validateCommandSkip, validateDispatchPermit, validateProtocolMessage } from "@server-driven-chat/protocol";
+import { validateCommandRetentionCheckpoint, validateCommandSkip, validateDispatchPermit, validateProtocolMessage } from "@server-driven-chat/protocol";
 import { BridgeStorageConflict, BridgeStore, type BridgeLane, type CommandInput, type DispatchState } from "../storage/index.js";
 
 export type BridgeRuntimeState = "stopped" | "connecting" | "online" | "reconnecting" | "authentication_required" | "lease_lost" | "disabled" | "reconciliation_required";
@@ -45,6 +45,7 @@ export class BridgeRuntime {
     #leaseGeneration: number;
     #busy = false;
     #reconciliationRequired = false;
+    readonly #recoveringLanes = new Set<BridgeLane>();
     #wakePrompt?: () => void;
     #wakeOutput?: () => void;
     #wakeAcks?: () => void;
@@ -73,6 +74,7 @@ export class BridgeRuntime {
     /** Inspect native state and renew a lease before any subscription or mutation begins. */
     async start(): Promise<void> {
         if (this.#controller || this.#tasks.length || this.#starting) throw new Error("Bridge runtime is already started or still stopping");
+        this.#recoveringLanes.clear();
         const controller = new AbortController();
         this.#controller = controller;
         const starting = this.#start(controller.signal);
@@ -83,7 +85,7 @@ export class BridgeRuntime {
     async #start(signal: AbortSignal): Promise<void> {
         this.#setState("connecting");
         const recovery = this.options.store.recoverAfterRestart(this.options.binding.sessionId);
-        this.#reconciliationRequired = recovery.attempts.some((attempt) => attempt.sessionId === this.options.binding.sessionId && attempt.state === "reconciliation_required");
+        this.#reconciliationRequired = this.options.store.hasCommandReconciliation(this.options.binding.sessionId) || recovery.attempts.some((attempt) => attempt.sessionId === this.options.binding.sessionId && attempt.state === "reconciliation_required");
         const inspected = await abortableOperation(this.options.adapter.inspect(this.options.binding), signal).catch(error => { if (signal.aborted) return undefined; throw error; });
         if (signal.aborted || !inspected) return;
         if (inspected.outcome !== "accepted" && inspected.outcome !== "applied") {
@@ -147,6 +149,16 @@ export class BridgeRuntime {
                 if (signal.aborted) break;
                 if (response.status === 401) throw new BridgeHttpError(401, "Device authentication must be repaired");
                 if (response.status === 409) throw new BridgeHttpError(409, "Command replay cursor is inconsistent; native state requires reconciliation");
+                if (response.status === 410) {
+                    let body: unknown;
+                    try { body=await response.json(); } catch { throw new BridgeHttpError(410,"Malformed expired-cursor response"); }
+                    if (!body || typeof body!=="object" || !("error" in body) || !body.error || typeof body.error!=="object" || !("code" in body.error) || body.error.code!=="CURSOR_EXPIRED") throw new BridgeHttpError(410,"Unrecognized expired-cursor response");
+                    this.#recoveringLanes.add(lane); this.#setState("reconnecting");
+                    await this.#recoverCommandCursor(lane,after,signal);
+                    this.#recoveringLanes.delete(lane); this.#wakePrompt?.(); this.#wakeOutput?.();
+                    failures++; await abortableDelay(reconnectDelay(this.#baseBackoff,this.#backoffCap,failures,this.#random),signal);
+                    continue;
+                }
                 if (!response.ok || !response.body) throw new BridgeHttpError(response.status, `Command stream failed (${response.status})`);
                 if (!response.headers.get("content-type")?.startsWith("text/event-stream")) throw new Error("Server command response is not an SSE stream");
                 failures = 0;
@@ -181,16 +193,33 @@ export class BridgeRuntime {
         }
     }
 
+    async #recoverCommandCursor(lane:BridgeLane,after:number,signal:AbortSignal):Promise<void> {
+        const binding=this.options.binding;
+        const url=new URL(`/v2/devices/${encodeURIComponent(this.options.deviceId)}/commands/checkpoint`,this.#base);
+        url.searchParams.set("lane",lane); url.searchParams.set("sessionId",binding.sessionId);
+        url.searchParams.set("bindingRevision",String(binding.bindingRevision)); url.searchParams.set("leaseGeneration",String(this.#leaseGeneration));
+        const response=await this.#fetch(url,{headers:{authorization:`Bearer ${this.options.credential}`,accept:"application/json"},signal:AbortSignal.any([signal,AbortSignal.timeout(10_000)])});
+        if (response.status===401) throw new BridgeHttpError(401,"Device authentication must be repaired");
+        if (!response.ok) throw await httpError(response);
+        let value:unknown; try { value=await response.json(); } catch { throw new BridgeHttpError(410,"Malformed retention checkpoint"); }
+        const parsed=validateCommandRetentionCheckpoint(value);
+        if (!parsed.valid) throw new BridgeHttpError(410,"Invalid retention checkpoint");
+        const c=parsed.value;
+        if (c.deviceId!==this.options.deviceId || c.lane!==lane || c.sessionId!==binding.sessionId || c.bindingId!==binding.bindingId || c.bindingRevision!==binding.bindingRevision || c.leaseGeneration!==this.#leaseGeneration || c.archivedThrough<=after) throw new BridgeHttpError(410,"Retention checkpoint does not match current authority");
+        this.options.store.applyCommandRecoveryCheckpoint({deviceId:c.deviceId,lane,sessionId:c.sessionId,expectedCursor:after,archivedThrough:c.archivedThrough,head:c.head});
+    }
+
     async #dispatchLoop(lane: BridgeLane, signal: AbortSignal): Promise<void> {
         while (!signal.aborted && !this.#isFatal()) {
+            if (this.#recoveringLanes.has(lane)) { await abortableDelay(100,signal); continue; }
             if (!this.#leaseIsValid()) { await abortableDelay(Math.min(250, this.#renewInterval), signal); continue; }
             if (lane === "prompt" && this.#reconciliationRequired) { await abortableDelay(100, signal); continue; }
             const commands = this.options.store.listQueuedCommands(this.options.deviceId, lane, 100, this.options.binding.sessionId);
             if (!commands.length) { await this.#wait(signal, lane === "prompt" ? "prompt" : "output", 100); continue; }
             for (const input of commands) {
-                if (signal.aborted || !this.#leaseIsValid() || (lane === "prompt" && this.#reconciliationRequired)) break;
+                if (signal.aborted || this.#recoveringLanes.has(lane) || !this.#leaseIsValid() || (lane === "prompt" && this.#reconciliationRequired)) break;
                 if (lane === "prompt") await this.#waitUntilTurnIdle(signal);
-                if (signal.aborted || !this.#leaseIsValid() || (lane === "prompt" && this.#reconciliationRequired)) break;
+                if (signal.aborted || this.#recoveringLanes.has(lane) || !this.#leaseIsValid() || (lane === "prompt" && this.#reconciliationRequired)) break;
                 await this.#dispatch(input, signal);
             }
         }
@@ -230,6 +259,9 @@ export class BridgeRuntime {
                 if (permit.signal.aborted || !this.#leaseIsValid() || this.#now() + 1500 >= permit.deadline) throw new BridgeHttpError(409,"Dispatch authority expired or was withdrawn");
             }};
             context.assertAuthority();
+            // The permit request can overlap a 410 response; do not claim new work
+            // after recovery has paused this lane.
+            if (this.#recoveringLanes.has(input.lane)) return;
             const started = this.options.store.beginDispatch(input.commandId, attemptId(input.commandId), command);
             if (started !== "started") return;
             began = true;
@@ -503,7 +535,7 @@ export class BridgeRuntime {
 
     #leaseIsValid(): boolean { return this.#leaseUntil > this.#now() + 1500 && this.#state !== "disabled" && !this.#isFatal(); }
     #isFatal(): boolean { return ["authentication_required", "lease_lost", "disabled"].includes(this.#state); }
-    #setState(state: BridgeRuntimeState): void { if (this.#state !== state) { this.#state = state; this.options.onStateChange?.(state); } }
+    #setState(state: BridgeRuntimeState): void { if (state==="online" && this.#recoveringLanes.size) state="reconnecting"; if (this.#state !== state) { this.#state = state; this.options.onStateChange?.(state); } }
     #handleFatal(error: unknown): void {
         if (error instanceof BridgeHttpError && error.status === 401) { this.#setState("authentication_required"); this.#abortLoops(); }
         else if (error instanceof BridgeHttpError && error.status === 409) { this.#setState("lease_lost"); this.#abortLoops(); }

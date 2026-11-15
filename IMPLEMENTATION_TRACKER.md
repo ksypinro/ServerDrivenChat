@@ -3247,3 +3247,96 @@ Other retained deviations: automatic editor update was rejected and exact1.140 r
 Final cleanup: consumer exited and publicly revoked all held keys/read401; all three windows disconnected, including old B. Operator audit verified zero liveMI04 bindings, zero unrevokedMI04 keys and zero open/unlinked inbox files across19 isolated processes. Test PostgreSQL stopped/removed. Pairing, native/server histories, rollback artifacts, ordinary editor/data and unrelated dirty project changes were preserved. No repository commit/reset, publication or expansion of frozen M24/M26 release claims.
 
 Current handoff: evidence/MI04/HANDOFF.md. MI-03 broader qualification gaps remain unqualified. MI-06/MB work was not started. Stop after MI-04.
+
+### MI-06-PLAN-001 — Retention and recovery implementation plan — 2026-11-14
+
+The user requested a detailed MI-06 plan that minimizes live testing. Planning only:
+MI-06 remains Not started; no product source, schema, candidate installation or
+retained deployment was changed. Read
+[the implementation plan](docs/feasibility/mi06-implementation-plan.md).
+
+Recommended design is contiguous-prefix payload compaction with compact command
+identity/fingerprint/terminal-ACK receipts retained. This preserves foreign keys,
+public receipts and late retry deduplication. Received/unknown/reconciliation states
+block archival, and an applied prompt needs terminal turn evidence. A stuck prefix
+may block reclamation; do not invent certainty to satisfy capacity. Total database
+size is not claimed bounded because compact receipts and transcript history remain.
+
+The plan adds authenticated command-lane checkpoints, actual HTTP410 expiry checks,
+atomic SQLite floor installation, dispatch/authority race coverage, bounded workers
+and a disabled-by-default/cohort rollout. Mandatory acceptance uses real PostgreSQL,
+TCP/SSE, persistent SQLite, two bridge processes and the exact packaged bridge with
+a deterministic native boundary. No compulsory model prompts or graphical pairing.
+The optional installed-host smoke is capped at one existing task/connection and two
+fixed text echoes; it is not claimed as real native410 proof. Native Cline/API pins
+remain unchanged. Used-state restore and rollback refusal are mandatory automated
+gates; signed-release/deployment qualification remains separately identified.
+
+No implementation was started, and the existing PR/commit was not amended by this
+planning request. Next implementation begins only on a new instruction.
+
+### MI-06-CHECKPOINT-001 — Retention schema started — 2026-11-14
+
+MI-06 is In Progress. Migration011 introduces archive metadata and per-device/lane
+floors without compacting or deleting existing payloads. Its rollback refuses used
+compaction state. Two focused tests passed against a disposable PostgreSQL17 database
+on port55434: upgrading existing command data and refusing used rollback, and
+rolling back an unused migration. The disposable test service was removed afterward.
+
+No compaction worker, 410 endpoint, authenticated checkpoint, bridge recovery,
+packaged acceptance or full regression suite has been implemented/run yet. Do not
+deploy or claim MI-06 completion. Continue with the ordered plan in
+docs/feasibility/mi06-implementation-plan.md; preserve existing planning edits.
+
+
+### MI-06-COMPLETE-001 — Command retention and recovery — 2026-11-14
+
+**Done for automated candidate acceptance.** Migration 011 and a disabled-by-default,
+allowlisted worker compact only terminal contiguous command payload prefixes, while
+retaining identity, canonical fingerprints, acknowledgements and public references.
+Authenticated checkpoints recover expired command cursors; local conflicting work
+is durably held for reconciliation. Rollback refuses used retention state. Compact
+receipts and transcript history continue to grow.
+
+The final MI-06 gate passed 43 tests with zero skips; the root build, lint, schema
+export and full suite passed, with 332 passes and one legacy M06-specific restore
+skip. The dedicated MI-06 used-state restore passed. Real PostgreSQL, TCP/SSE, two
+bridge processes and the exact packaged companion exercised actual 410 recovery;
+its native adapter was simulated. The accepted MI-04 native archive is unchanged.
+[Verification](evidence/MI06/verification.md), [candidate hashes](evidence/MI06/artifact-manifest.json),
+[implementation plan](docs/feasibility/mi06-implementation-plan.md).
+
+No installed-host smoke, deployment, cohort rollout, signing or publication occurred.
+The worker remains off by default. Synthetic compaction timing and a higher relative
+control-admission p95 under load are recorded in the evidence; they are not native
+performance qualification. Stop after MI-06.
+
+
+### MI-06-REOPEN-002 — 2026-11-14
+
+MI-06 is In Progress. Audit reproduced unsafe reuse of earlier turn completion evidence. The earlier completion entry is superseded pending turn ownership, missing transport/recovery cases, an explicit performance gate, and candidate .2 acceptance. Retention remains disabled; no retained deployment changes.
+
+
+### MI-06-COMPLETE-002 — Repaired retention safety and acceptance — 2026-11-15
+
+**Done for repaired candidate .2 automated acceptance.** This entry supersedes the
+premature candidate .1 completion claim. Migration 012 reserves prompt turn ownership
+per session, preserves it after archival, and rejects unsupported compacted-011
+upgrades. Historical ambiguity, stale/wrong-authority or malformed terminal evidence
+cannot release compaction or outstanding admission. Paused TCP streams now observe
+expiry while waiting for drain. Evidence indexes and bounded event-loop yields close
+the mixed-workload performance gap.
+
+Final build, lint and schema export passed. The dedicated gate passed 63 tests with
+zero skips plus its five-round performance budget; the full root suite passed 352
+tests with one legacy M06-specific restore skip. The MI-06 used-state restore passed.
+Source and exact packaged reconnect traces, real 410/local conflicts through restart,
+pending holes, dropped ACK responses, TCP backpressure, rollback and cross-device
+worker fairness passed. R01–R19 are mapped in evidence/MI06/traceability.md. Median
+loaded/additional p95: admission 10.42/5.16 ms; renewal 10.49/5.01 ms.
+
+Companion 0.10.0-mi06.2 and sdc-server:mi06-candidate.2 hashes are synchronized in
+evidence/MI06/artifact-manifest.json. Candidate .1 evidence and artifacts are preserved;
+Cline 4.1.2206/API 1.3 is unchanged. No live Cline/model test, retained deployment,
+cohort rollout, signing or publication occurred. Retention defaults remain off with
+an empty allowlist. Compact receipts/transcript history still grow. Stop after MI-06.

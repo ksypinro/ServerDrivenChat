@@ -3,7 +3,7 @@
 **Status (2026-11-14):** MI-01 and MI-02 are Done; MI-03 is Done for the explicitly
 selected **two-to-three-window, six-case runbook subset** on the exact candidate in
 [verification](../../evidence/MI03/verification.json). Broader qualification remains open
-as listed in §7.3. MI-04 is Done for the recorded S6/S7/N1 subset (§7.4); MI-06 is Not started. Sections 1–6 and the inspection
+as listed in §7.3. MI-04 is Done for the recorded S6/S7/N1 subset (§7.4); MI-06 is Done for repaired candidate .2 automated acceptance (2026-11-15); installed-host rollout is separate. Sections 1–6 and the inspection
 inventory describe the original 2026-11-04 research baseline; dated results below
 supersede their historical "today" and "unqualified" statements only within that subset.
 
@@ -335,7 +335,7 @@ Proposed IDs, appended without renumbering.
 | MI-02: Bridge and companion multi-window | B1, B2, C1–C5, generic-host parity | Two-process inbox tests, simulated windows, companion unit tests | Done 2026-11-05 (§7.2) |
 | MI-03: Real multi-window acceptance | Exact candidate pair; two and three windows on different workspaces | User-selected six-case runbook gate (2026-11-12); broader §8 coverage and performance remain explicitly unqualified | Done for this bounded subset, 2026-11-12 ([verification](../../evidence/MI03/verification.json), §7.3) |
 | MI-04: Same workspace and continuity | S6, S7, N1; N2 excluded | Worktree and duplicate-window acceptance; continuity tests | Done for the recorded subset, 2026-11-14 ([verification](../../evidence/MI04/verification.json), §7.4) |
-| MI-06: Command retention | S3 archival of fully acknowledged commands, with `410 CURSOR_EXPIRED` resynchronization | Retention, replay and resynchronization tests | Not started |
+| MI-06: Command retention | S3 archival of fully acknowledged commands, with `410 CURSOR_EXPIRED` resynchronization | Retention, replay and resynchronization tests | Done for repaired candidate .2; [implementation plan](mi06-implementation-plan.md), [evidence](../../evidence/MI06/README.md) |
 
 In-window concurrency, formerly MI-05, is dropped by the scope decision. MB-08 already
 requires at least two simultaneous bindings, so MI-01 and MI-02 could precede it.

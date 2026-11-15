@@ -14,3 +14,4 @@ export const serverProtocolDependency = protocolModule;
 
 export * from "./public-api/policy.js";
 export * from "./public-api/conversations.js";
+export * from "./retention/index.js";

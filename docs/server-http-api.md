@@ -78,3 +78,11 @@ The device's lease and command routes are unchanged. Renewing a detached or repl
 ## Planned public gateway extension — not implemented
 
 The user adds a FastAPI facade that calls these authenticated HTTP/SSE services; it does not replace them. [DECISION-009](decisions/009-fastapi-public-api.md) and [research/catalog](feasibility/public-api.md) define M27–M30, durable operations/results, public scoped credentials, desktop control and OpenAI/Anthropic profiles. New internal server contracts/authorization routes are required; the existing 202 turn response is command metadata, not an LLM result. All new APIs are Not started. Device routes retain their device-only authority and cannot be exposed as user-control bypasses.
+
+### MI-06 command replay and checkpoint (candidate)
+
+Device command replay returns `410 CURSOR_EXPIRED` when the requested `after`/`Last-Event-ID` precedes the lane archive floor, and `409 CURSOR_AHEAD` above the lane head. At the floor replay remains valid. Each batch reads its floor, head and records from one database snapshot. A stream overtaken by compaction closes; its next handshake obtains 410. Session event cursors are unchanged.
+
+Authenticated devices can request `GET /v2/devices/{deviceId}/commands/checkpoint?lane=prompt|control&sessionId=...&bindingRevision=...&leaseGeneration=...`. The exact live binding is checked transactionally. Version 1 contains only `version`, `deviceId`, `lane`, `sessionId`, `bindingId`, `bindingRevision`, `leaseGeneration`, `archivedThrough` and `head`; it contains no command payloads or transcript data. The `commands.retention.v1` health feature advertises support.
+
+A new `turn.submit` command may not reuse another command's `turnId` within the same session. This returns the existing storage-conflict response (409), including after the original payload was archived. An identical retry using the original command ID remains idempotent. Command streams waiting for socket drain also recheck authentication and cursor expiry, so a paused TCP reader can be closed when retention overtakes it.
