@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
+import { setImmediate as yieldEventLoop } from "node:timers/promises";
 import { Pool, type PoolClient, type PoolConfig } from "pg";
-import { canonicalJson } from "@server-driven-chat/protocol";
+import { canonicalJson, validateProtocolMessage } from "@server-driven-chat/protocol";
 
 export const storageModule = "server-storage" as const;
 export type Lane = "prompt" | "control";
@@ -16,6 +17,7 @@ export class StorageNotFoundError extends Error {
 }
 
 export class StorageCapacityError extends Error { constructor(message: string) { super(message); this.name = "StorageCapacityError"; } }
+export class CommandCursorExpiredError extends Error { constructor() { super("Command replay cursor has expired; retrieve a retention checkpoint"); this.name = "CommandCursorExpiredError"; } }
 /** A live binding already controls the native conversation; only its owner learns which one. */
 export class NativeConversationBoundError extends Error { constructor(message: string) { super(message); this.name = "NativeConversationBoundError"; } }
 export interface BindingFence { deviceId: string; sessionId: string; bindingRevision: number; leaseGeneration: number; credentialHash?: string }
@@ -55,6 +57,25 @@ const asNumber = (value: string | number | bigint): number => Number(value);
 
 async function lockKeys(client: PoolClient, ...keys: string[]): Promise<void> {
   for (const key of [...new Set(keys)].sort()) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [key]);
+}
+
+type TerminalCandidate = { session_id:string;command_id:string;turn_id:string|null;payload:Record<string,unknown>|null;terminal_at:Date|null;terminal_payload:unknown;ambiguous:boolean };
+// Shared by admission and compaction: server timestamps and exact authority identify
+// evidence for this command, while permanent turn metadata survives payload removal.
+const terminalPredicate = `e.session_id=c.session_id AND e.created_at>=c.created_at
+ AND e.payload->>'sessionId'=c.session_id
+ AND e.payload->>'bindingRevision'=c.payload->>'bindingRevision'
+ AND e.payload->>'leaseGeneration'=c.payload->>'leaseGeneration'
+ AND ((e.payload->>'type' IN ('turn.completed','turn.failed','turn.cancelled') AND e.payload->'payload'->>'turnId'=c.turn_id)
+ OR (e.payload->>'type'='command.rejected' AND e.payload->'payload'->>'commandId'=c.command_id))`;
+const terminalColumns = `c.turn_id,
+ EXISTS(SELECT 1 FROM commands other WHERE other.session_id=c.session_id AND other.turn_id=c.turn_id AND other.command_id<>c.command_id) AS ambiguous,
+ (SELECT e.created_at FROM events e WHERE ${terminalPredicate} ORDER BY e.created_at DESC,e.session_seq DESC LIMIT 1) AS terminal_at,
+ (SELECT e.payload FROM events e WHERE ${terminalPredicate} ORDER BY e.created_at DESC,e.session_seq DESC LIMIT 1) AS terminal_payload`;
+function terminalMatches(row:TerminalCandidate):boolean {
+ if (!row.payload || !row.turn_id || row.turn_id!==row.payload.turnId || row.ambiguous || !row.terminal_at) return false;
+ const result=validateProtocolMessage(row.terminal_payload);
+ return result.valid && "eventId" in result.value && result.value.sessionId===row.session_id;
 }
 
 export class ServerDatabase {
@@ -136,6 +157,13 @@ export class ServerDatabase {
       WHERE c.device_id=$1 AND c.lane=$2 AND (a.state IS NULL OR a.state NOT IN ('applied','rejected'))`, [input.deviceId,input.lane,input.sessionId]);
     if (input.deviceLimit !== undefined && Number(pending.rows[0].device) >= input.deviceLimit) throw new StorageCapacityError("Pending command lane capacity is full");
     if (input.sessionLimit !== undefined && Number(pending.rows[0].session) >= input.sessionLimit) throw new StorageCapacityError("Pending session queue capacity is full");
+  }
+
+  /** Caller holds the device-lane lock; compact receipts do not consume replay capacity. */
+  async assertRetainedCommandCapacity(client:PoolClient,deviceId:string,lane:Lane,payload:unknown):Promise<void> {
+    const canonical=JSON_VALUE(payload), bytes=Buffer.byteLength(canonical);
+    const history=await client.query<{count:string;bytes:string;incoming_bytes:number}>("SELECT count(*) AS count,COALESCE(sum(octet_length(payload::text)),0) AS bytes,octet_length($3::jsonb::text) AS incoming_bytes FROM commands WHERE device_id=$1 AND lane=$2 AND archived_at IS NULL",[deviceId,lane,canonical]);
+    if (bytes>this.#limits.maxRecordBytes || Number(history.rows[0].count)>=this.#limits.maxLaneCommands || Number(history.rows[0].bytes)+history.rows[0].incoming_bytes>this.#limits.maxLaneCommandBytes) throw new StorageCapacityError("Retained command lane capacity is full; preserve history and reconcile before archival");
   }
 
   /** Hold revocation and scope checks through the committing authority boundary. */
@@ -237,41 +265,44 @@ export class ServerDatabase {
   async recordCommand(record: CommandRecord, options: WriteOptions = {}): Promise<StoredCommand> {
     return this.#writeTransaction(options, async (client) => {
       await lockKeys(client, `command:${record.commandId}`);
-      const existing = await client.query("SELECT session_id,device_id,lane,lane_seq,payload FROM commands WHERE command_id=$1", [record.commandId]);
+      const existing = await client.query("SELECT session_id,device_id,lane,lane_seq,payload,payload_sha256,archived_at FROM commands WHERE command_id=$1", [record.commandId]);
       if (existing.rowCount) {
         const row = existing.rows[0];
-        if (row.session_id === record.sessionId && row.device_id === record.deviceId && row.lane === record.lane && JSON_VALUE(row.payload) === JSON_VALUE(record.payload))
-          return { ...record, payload: row.payload, laneSeq: asNumber(row.lane_seq), disposition: "identical" };
+        const identical = row.archived_at ? row.payload_sha256 === createHash("sha256").update(JSON_VALUE(record.payload)).digest("hex") : JSON_VALUE(row.payload) === JSON_VALUE(record.payload);
+        if (row.session_id === record.sessionId && row.device_id === record.deviceId && row.lane === record.lane && identical)
+          return { ...record, payload: row.archived_at ? record.payload : row.payload, laneSeq: asNumber(row.lane_seq), disposition: "identical" };
         throw new StorageConflictError(`Command ${record.commandId} was retried with conflicting content`);
       }
       if (record.lane === "prompt") {
         // Shared by every ingress; locks serialize the opt-in and all subsequent prompts.
         await lockKeys(client, `public-admission:${record.sessionId}`);
+        const input=record.payload as Record<string,unknown>|null;
+        if (input?.type==="turn.submit") {
+          if (typeof input.turnId!=="string" || !input.turnId || input.turnId.length>2048) throw new StorageConflictError("Prompt turn identity is invalid");
+          const owner=await client.query("SELECT command_id FROM commands WHERE session_id=$1 AND turn_id=$2 LIMIT 1",[record.sessionId,input.turnId]);
+          if (owner.rowCount) throw new StorageConflictError("Turn ID already belongs to another command in this session");
+        }
         if (options.singleOutstanding) await client.query("INSERT INTO public_session_admission(session_id) VALUES($1) ON CONFLICT DO NOTHING", [record.sessionId]);
         const guarded = await client.query("SELECT 1 FROM public_session_admission WHERE session_id=$1", [record.sessionId]);
         if (guarded.rowCount) {
-          const outstanding = await client.query(`SELECT 1 FROM commands c
+          const outstanding = await client.query<TerminalCandidate>(`SELECT c.session_id,c.command_id,c.payload,${terminalColumns} FROM commands c
             LEFT JOIN command_acknowledgements a USING(device_id,lane,lane_seq)
             LEFT JOIN command_skips k USING(device_id,lane,lane_seq)
-            WHERE c.session_id=$1 AND c.lane='prompt' AND k.command_id IS NULL
-            AND (a.state IS NULL OR a.state <> 'rejected')
-            AND NOT EXISTS (SELECT 1 FROM events e WHERE e.session_id=c.session_id AND
-              ((e.payload->>'type' IN ('turn.completed','turn.failed','turn.cancelled') AND e.payload->'payload'->>'turnId'=c.payload->>'turnId')
-               OR (e.payload->>'type'='command.rejected' AND e.payload->'payload'->>'commandId'=c.command_id))) LIMIT 1`, [record.sessionId]);
-          if (outstanding.rowCount) throw new StorageConflictError("Session already has an outstanding prompt; wait for terminal evidence or reconcile");
+            WHERE c.session_id=$1 AND c.lane='prompt' AND c.archived_at IS NULL AND k.command_id IS NULL
+            AND (a.state IS NULL OR a.state <> 'rejected')`, [record.sessionId]);
+          if (outstanding.rows.some(row=>!terminalMatches(row))) throw new StorageConflictError("Session already has an outstanding prompt; wait for terminal evidence or reconcile");
         }
       }
       await lockKeys(client, `lane:${record.deviceId}:${record.lane}`);
-      const payloadBytes = Buffer.byteLength(JSON_VALUE(record.payload));
-      const history = await client.query<{count: string; bytes: string; incoming_bytes: number}>("SELECT count(*) AS count,COALESCE(sum(octet_length(payload::text)),0) AS bytes,octet_length($3::jsonb::text) AS incoming_bytes FROM commands WHERE device_id=$1 AND lane=$2", [record.deviceId,record.lane,JSON_VALUE(record.payload)]);
-      if (payloadBytes > this.#limits.maxRecordBytes || Number(history.rows[0].count) >= this.#limits.maxLaneCommands || Number(history.rows[0].bytes) + history.rows[0].incoming_bytes > this.#limits.maxLaneCommandBytes) throw new StorageCapacityError("Retained command lane capacity is full; preserve history and reconcile before archival");
+      await this.assertRetainedCommandCapacity(client,record.deviceId,record.lane,record.payload);
       await this.assertPendingCapacity(client, { deviceId: record.deviceId, lane: record.lane, sessionId: record.sessionId, deviceLimit: options.pendingLimit, sessionLimit: options.sessionPendingLimit });
       const seq = await client.query<{ last_seq: string }>(
         "INSERT INTO lane_counters(device_id,lane,last_seq) VALUES($1,$2,1) ON CONFLICT(device_id,lane) DO UPDATE SET last_seq=lane_counters.last_seq+1 RETURNING last_seq",
         [record.deviceId, record.lane]);
       const laneSeq = asNumber(seq.rows[0].last_seq);
-      await client.query("INSERT INTO commands(command_id,session_id,device_id,lane,lane_seq,payload) VALUES($1,$2,$3,$4,$5,$6::jsonb)",
-        [record.commandId, record.sessionId, record.deviceId, record.lane, laneSeq, JSON_VALUE(record.payload)]);
+      const canonical=JSON_VALUE(record.payload);
+      await client.query("INSERT INTO commands(command_id,session_id,device_id,lane,lane_seq,payload,payload_sha256,original_payload_bytes,turn_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)",
+        [record.commandId, record.sessionId, record.deviceId, record.lane, laneSeq, canonical,createHash("sha256").update(canonical).digest("hex"),Buffer.byteLength(canonical),record.lane==="prompt" && (record.payload as Record<string,unknown>)?.type==="turn.submit" ? (record.payload as Record<string,unknown>).turnId : null]);
       return { ...record, laneSeq, disposition: "created" };
     });
   }
@@ -435,7 +466,7 @@ export class ServerDatabase {
     const rank: Record<CommandAckState, number> = { received: 0, unknown: 1, applied: 2, rejected: 2, reconciliation_required: 2 };
     return this.#writeTransaction(options, async (client) => {
       await lockKeys(client, `ack:${record.deviceId}:${record.lane}:${record.laneSeq}`);
-      const command = await client.query<{ session_id: string; payload: Record<string,unknown> }>("SELECT session_id,payload FROM commands WHERE device_id=$1 AND lane=$2 AND lane_seq=$3", [record.deviceId, record.lane, record.laneSeq]);
+      const command = await client.query<{ session_id: string; payload: Record<string,unknown>|null; archived_at:Date|null }>("SELECT session_id,payload,archived_at FROM commands WHERE device_id=$1 AND lane=$2 AND lane_seq=$3", [record.deviceId, record.lane, record.laneSeq]);
       if (!command.rowCount) throw new StorageNotFoundError("Acknowledgement references an unknown command sequence");
       if (record.payload && typeof record.payload === "object" && "sessionId" in record.payload && (record.payload as { sessionId: unknown }).sessionId !== command.rows[0].session_id)
         throw new StorageConflictError("Acknowledgement session does not match the referenced command");
@@ -445,6 +476,7 @@ export class ServerDatabase {
       if (prior.rowCount) {
         const old = prior.rows[0];
         if (old.state === record.state && JSON_VALUE(old.payload) === JSON_VALUE(record.payload)) return { disposition: "identical", state: old.state };
+        if (command.rows[0].archived_at || !command.rows[0].payload) throw new StorageConflictError("Archived command acknowledgement is immutable");
         if (rank[record.state] <= rank[old.state] || (old.state === "rejected" || old.state === "reconciliation_required" || old.state === "applied"))
           throw new StorageConflictError("Command acknowledgement conflicts with or regresses its durable state");
         await client.query("UPDATE command_acknowledgements SET state=$4,payload=$5::jsonb,updated_at=now() WHERE device_id=$1 AND lane=$2 AND lane_seq=$3",
@@ -452,6 +484,7 @@ export class ServerDatabase {
         await this.#applyApprovalAck(client,command.rows[0].payload,command.rows[0].session_id,record.state);
         return { disposition: "created", state: record.state };
       }
+      if (command.rows[0].archived_at || !command.rows[0].payload) throw new StorageConflictError("Archived command has no mutable acknowledgement");
       await client.query("INSERT INTO command_acknowledgements(device_id,lane,lane_seq,state,payload) VALUES($1,$2,$3,$4,$5::jsonb)",
         [record.deviceId, record.lane, record.laneSeq, record.state, JSON_VALUE(record.payload)]);
       await this.#applyApprovalAck(client,command.rows[0].payload,command.rows[0].session_id,record.state);
@@ -488,9 +521,67 @@ export class ServerDatabase {
   }
 
   async readCommands(deviceId: string, lane: Lane, afterLaneSeq: number, limit = 500): Promise<StoredCommand[]> {
+    return (await this.readCommandBatch(deviceId, lane, afterLaneSeq, limit)).records;
+  }
+
+  /** Read the archive floor, lane head and replay rows from the same database snapshot. */
+  async readCommandBatch(deviceId: string, lane: Lane, afterLaneSeq: number, limit = 500): Promise<{ floor: number; head: number; records: StoredCommand[] }> {
     if (!Number.isSafeInteger(afterLaneSeq) || afterLaneSeq < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000) throw new RangeError("Command cursor/limit is invalid");
-    const result = await this.pool.query("SELECT command_id,session_id,device_id,lane,lane_seq,payload FROM commands WHERE device_id=$1 AND lane=$2 AND lane_seq>$3 ORDER BY lane_seq LIMIT $4", [deviceId, lane, afterLaneSeq, limit]);
-    return result.rows.map((row) => ({ commandId: row.command_id, sessionId: row.session_id, deviceId: row.device_id, lane: row.lane, laneSeq: asNumber(row.lane_seq), payload: row.payload, disposition: "created" }));
+    return this.transaction(async client => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const bounds = await client.query<{floor:string;head:string}>("SELECT COALESCE((SELECT archived_through FROM command_lane_retention WHERE device_id=$1 AND lane=$2),0) AS floor,COALESCE((SELECT last_seq FROM lane_counters WHERE device_id=$1 AND lane=$2),0) AS head", [deviceId,lane]);
+      const floor = asNumber(bounds.rows[0].floor), head = asNumber(bounds.rows[0].head);
+      if (afterLaneSeq < floor) throw new CommandCursorExpiredError();
+      const result = await client.query("SELECT command_id,session_id,device_id,lane,lane_seq,payload FROM commands WHERE device_id=$1 AND lane=$2 AND lane_seq>$3 AND archived_at IS NULL ORDER BY lane_seq LIMIT $4", [deviceId,lane,afterLaneSeq,limit]);
+      return {floor,head,records:result.rows.map(row => ({ commandId: row.command_id, sessionId: row.session_id, deviceId: row.device_id, lane: row.lane, laneSeq: asNumber(row.lane_seq), payload: row.payload, disposition: "created" as const }))};
+    });
+  }
+
+  /** Compact only a contiguous prefix of terminal commands; a busy lane is skipped. */
+  async compactCommandLane(input: {deviceId:string;lane:Lane;minAgeSeconds:number;keepLast:number;batchSize:number;now?:Date;includeMetrics?:boolean}): Promise<{floor:number;compacted:number;blocked?:string;busy?:boolean;metrics?:{bytes:number;blockedSequence?:number;durationMs:number}}> {
+    if (!input.deviceId || !["prompt","control"].includes(input.lane) || !Number.isSafeInteger(input.minAgeSeconds) || input.minAgeSeconds < 0 || !Number.isSafeInteger(input.keepLast) || input.keepLast < 0 || !Number.isSafeInteger(input.batchSize) || input.batchSize < 1 || input.batchSize > 1000 || (input.now && !Number.isFinite(input.now.getTime()))) throw new RangeError("Invalid retention policy");
+    const started=Date.now();
+    try { return await this.transaction(async client => {
+      const locked = await client.query<{locked:boolean}>("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS locked", [`lane:${input.deviceId}:${input.lane}`]);
+      if (!locked.rows[0].locked) return {floor:0,compacted:0,busy:true};
+      await client.query("SET LOCAL lock_timeout = '100ms'");
+      const headRow = await client.query<{last_seq:string}>("SELECT last_seq FROM lane_counters WHERE device_id=$1 AND lane=$2", [input.deviceId,input.lane]);
+      if (!headRow.rowCount) return {floor:0,compacted:0};
+      const head=asNumber(headRow.rows[0].last_seq);
+      await client.query("INSERT INTO command_lane_retention(device_id,lane) VALUES($1,$2) ON CONFLICT DO NOTHING",[input.deviceId,input.lane]);
+      const current=await client.query<{archived_through:string}>("SELECT archived_through FROM command_lane_retention WHERE device_id=$1 AND lane=$2 FOR UPDATE",[input.deviceId,input.lane]);
+      let floor=asNumber(current.rows[0].archived_through), compacted=0, bytes=0; let blocked:string|undefined;
+      if (floor>head) throw new StorageConflictError("Archive floor exceeds lane head");
+      const rows=await client.query<TerminalCandidate & {lane_seq:string;archived_at:Date|null;ack_state:string|null;ack_updated:Date|null;uncertain:boolean}>(`SELECT c.command_id,c.session_id,c.lane_seq,c.payload,c.archived_at,a.state AS ack_state,a.updated_at AS ack_updated,
+        ${terminalColumns},
+        EXISTS (SELECT 1 FROM events e WHERE e.session_id=c.session_id AND e.created_at>=c.created_at AND e.payload->>'type'='session.reconciliation_required' AND ((e.payload->'payload'->'affectedIds') ? c.command_id OR (c.payload->>'turnId' IS NOT NULL AND (e.payload->'payload'->'affectedIds') ? (c.payload->>'turnId')) OR EXISTS (SELECT 1 FROM bindings b WHERE b.session_id=c.session_id AND b.binding_revision::text=c.payload->>'bindingRevision' AND (e.payload->'payload'->'affectedIds') ? b.binding_id))) AS uncertain
+        FROM commands c LEFT JOIN command_acknowledgements a USING(device_id,lane,lane_seq) WHERE c.device_id=$1 AND c.lane=$2 AND c.lane_seq>$3 AND c.lane_seq<=$4 ORDER BY c.lane_seq LIMIT $5 FOR UPDATE OF c`,[input.deviceId,input.lane,floor,Math.max(0,head-input.keepLast),input.batchSize]);
+      const cutoff=(input.now ?? new Date()).getTime()-input.minAgeSeconds*1000;
+      const archiveIds:string[]=[], fingerprints:string[]=[], byteCounts:number[]=[];
+      for (const [offset,row] of rows.rows.entries()) {
+        // Keep peer HTTP/lease work responsive while validating a bounded batch.
+        if(offset>0 && offset%16===0) await yieldEventLoop();
+        if (asNumber(row.lane_seq)!==floor+1 || row.archived_at || !row.payload) { blocked="inconsistent_prefix"; break; }
+        const validation=validateProtocolMessage(row.payload);
+        if (!validation.valid || !("commandId" in validation.value) || validation.value.commandId!==row.command_id || validation.value.sessionId!==row.session_id || validation.value.lane!==input.lane) { blocked="invalid_command"; break; }
+        if (row.ack_state!=="applied" && row.ack_state!=="rejected") { blocked="ack_not_final"; break; }
+        if (row.uncertain) { blocked="reconciliation_required"; break; }
+        if (row.ack_state==="applied" && row.payload.type==="turn.submit") {
+          if (!terminalMatches(row)) { blocked=row.ambiguous ? "ambiguous_turn_identity" : "turn_not_terminal"; break; }
+        }
+        const terminalTime=Math.max(row.ack_updated?.getTime() ?? Infinity,row.terminal_at?.getTime() ?? 0);
+        if (terminalTime>cutoff) { blocked="too_recent"; break; }
+        const canonical=JSON_VALUE(row.payload);
+        const size=Buffer.byteLength(canonical);
+        archiveIds.push(row.command_id); fingerprints.push(createHash("sha256").update(canonical).digest("hex")); byteCounts.push(size);
+        floor++; compacted++; bytes+=size;
+      }
+      if (compacted) {
+        await client.query("UPDATE commands AS c SET payload=NULL,archived_at=clock_timestamp(),payload_sha256=v.fingerprint,original_payload_bytes=v.bytes FROM unnest($1::text[],$2::text[],$3::bigint[]) AS v(command_id,fingerprint,bytes) WHERE c.command_id=v.command_id",[archiveIds,fingerprints,byteCounts]);
+        await client.query("UPDATE command_lane_retention SET archived_through=$3,updated_at=clock_timestamp() WHERE device_id=$1 AND lane=$2",[input.deviceId,input.lane,floor]);
+      }
+      return {floor,compacted,...(blocked?{blocked}:{}),...(input.includeMetrics?{metrics:{bytes,durationMs:Date.now()-started,...(blocked?{blockedSequence:floor+1}:{})}}:{})};
+    }); } catch (error) { if (error && typeof error === "object" && "code" in error && error.code === "55P03") return {floor:0,compacted:0,busy:true}; throw error; }
   }
 
   async #putSimple(table: "grants" | "attachment_metadata", idColumn: "grant_id" | "attachment_id", id: string, sessionId: string,

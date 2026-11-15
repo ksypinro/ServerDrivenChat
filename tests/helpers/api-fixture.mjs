@@ -6,7 +6,7 @@ export async function apiFixture(url,options={},recovery={}) {
  const admin=new ServerDatabase({poolConfig:{connectionString:url,max:2}});
  if(recovery.schema){const existing=await admin.pool.query('SELECT 1 FROM information_schema.schemata WHERE schema_name=$1',[schema]);if(!existing.rowCount){await admin.close();throw Error('Disposable fixture recovery schema does not exist');}}
  else await admin.pool.query(`CREATE SCHEMA ${schema}`);
- const db=new ServerDatabase({poolConfig:{connectionString:url,max:24,options:`-c search_path=${schema}`}});
+ const db=new ServerDatabase({poolConfig:{connectionString:url,max:24,options:`-c search_path=${schema}`},limits:recovery.limits});
  let server;
  try {
   await db.migrate();const tokens=new Map();const issuer='https://identity.repair.test';
@@ -17,7 +17,7 @@ export async function apiFixture(url,options={},recovery={}) {
   const pairing=await auth.startPairing(owner,'disposable repair fixture');await auth.confirmPairingOnServer(owner,pairing.pairingCode);
   const issued=await auth.confirmPairingLocally(pairing.pairingId,pairing.localConfirmationSecret,true);
   const extendedOptions=typeof options==='function'?await options({database:db,authorization:auth,provider}):options;
-  server=createApiServer({database:db,authorization:auth,provider,pollMs:25,heartbeatMs:100,...extendedOptions});
+  server=(recovery.apiServerFactory??createApiServer)({database:db,authorization:auth,provider,pollMs:25,heartbeatMs:100,...extendedOptions});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(extendedOptions.fixturePort ?? 0,'127.0.0.1',resolve);});
   const base=`http://127.0.0.1:${server.address().port}`;
   const bind=async(sessionId)=>{await db.putSession({sessionId,ownerUserId:owner.userId});await db.putBinding({bindingId:`b-${sessionId}`,sessionId,deviceId:issued.deviceId,bindingRevision:1,leaseGeneration:1,state:'active',payload:{}});};

@@ -172,4 +172,5 @@ export interface AppAdapter {
 
 /** Authenticated transport metadata; never a user-authored command or native event. */
 export interface CommandSkip { deviceId: string; lane: "prompt" | "control"; laneSeq: number; commandId: string; reason: "obsolete_binding" }
+export interface CommandRetentionCheckpoint { version: 1; deviceId: string; lane: "prompt" | "control"; sessionId: string; bindingId: string; bindingRevision: number; leaseGeneration: number; archivedThrough: number; head: number }
 export interface DispatchPermit { sessionId: string; bindingRevision: number; leaseGeneration: number; leaseExpiresAt: string; serverTime: string }

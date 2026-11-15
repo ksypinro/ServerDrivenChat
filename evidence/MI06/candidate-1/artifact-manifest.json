@@ -1,0 +1,30 @@
+{
+  "milestone": "MI-06",
+  "status": "unsigned-candidate",
+  "nativePin": {
+    "version": "4.1.2206",
+    "baseVersion": "4.1.22",
+    "revision": 6,
+    "extensionSha256": "8da2f0506aacc06906d81783cd9ad540b93f68fdc64606d2c5e77b15d2ef1f29",
+    "nativeSha256": "323df8a1bf2f226e0f5d30a706e3c794633f4d49ec87a417a7e11598f17731a9"
+  },
+  "nativeApi": "1.3",
+  "companion": "0.10.0",
+  "companionBundleSha256": "aaca58ac7362d8f0e728def3420a06d3ea8cf8a87113ed9c264395ef4f4adabc",
+  "artifacts": [
+    {
+      "file": "cline-4.1.2206-mi04.1.vsix",
+      "sha256": "6a8cae93c7ecd8d4d647dc1f566f6bcb1e44ac04b0215dbd12d96b93d2eb1a2c"
+    },
+    {
+      "file": "sdc-cline-bridge-0.10.0-mi06.1.vsix",
+      "sha256": "05ffeb5c4f92982b829b61af436025f6fcc45eeb245c4cacec2af1368d458458"
+    }
+  ],
+  "publication": "none",
+  "serverImage": {
+    "tag": "sdc-server:mi06-candidate",
+    "imageId": "sha256:9ba7dbb62eca1c896d100ab4aefcba569082256e9055555231dc4ecc13e11789"
+  },
+  "migration011Sha256": "4a2200c556b091bd6070483ca6f38648e164fb55baa11d86dd72fb3a6aee0727"
+}

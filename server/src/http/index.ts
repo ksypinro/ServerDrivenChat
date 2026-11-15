@@ -10,7 +10,7 @@ import type { ApprovalEngine } from "../approvals/index.js";
 import { createPublicKey, type KeyObject } from "node:crypto";
 import type { AttachmentService } from "../attachments/index.js";
 import { DeviceLeaseService } from "../leases/index.js";
-import { NativeConversationBoundError, StorageCapacityError, StorageConflictError, StorageNotFoundError, type BindingFence, type Lane, type ServerDatabase } from "../storage/index.js";
+import { CommandCursorExpiredError, NativeConversationBoundError, StorageCapacityError, StorageConflictError, StorageNotFoundError, type BindingFence, type Lane, type ServerDatabase } from "../storage/index.js";
 
 import { createPublicApiHandler } from "../public-api/http.js";
 import { ConversationService } from "../public-api/conversations.js";
@@ -22,7 +22,7 @@ const HEARTBEAT_MS = 15_000;
 const POLL_MS = 350;
 const CURSOR = /^(0|[1-9][0-9]{0,15})$/;
 /** Optional registration behavior advertised by `GET /v2/health`; clients send a field only when it is listed. */
-export const SERVER_FEATURES = Object.freeze(["binding.nativeScope", "binding.display", "binding.takeover", "binding.laneWatermarks", "binding.continuity"] as const);
+export const SERVER_FEATURES = Object.freeze(["binding.nativeScope", "binding.display", "binding.takeover", "binding.laneWatermarks", "binding.continuity", "commands.retention.v1"] as const);
 const CONTROL_UI_ROOT = resolve(fileURLToPath(new URL("../../../control-ui/dist/", import.meta.url)));
 const STATIC_TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2" };
 
@@ -307,6 +307,23 @@ export function createApiServer(options: ApiServerOptions): Server {
             } finally {activeStreams--;}
             return;
         }
+        const checkpointMatch = /^\/v2\/devices\/([^/]+)\/commands\/checkpoint$/.exec(url.pathname);
+        if (req.method === "GET" && checkpointMatch) {
+            const device = await authenticateDevice(req), deviceId=decodeURIComponent(checkpointMatch[1]);
+            if (device.deviceId!==deviceId) throw new HttpError(403,"FORBIDDEN","Credential does not match this device");
+            const lane=url.searchParams.get("lane"), sessionId=nonempty(url.searchParams.get("sessionId"),"sessionId");
+            if (lane!=="prompt" && lane!=="control") throw new HttpError(400,"INVALID_LANE","lane must be prompt or control");
+            const parseRevision=(name:string):number => { const value=url.searchParams.get(name); if (!value || !/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) throw new HttpError(400,"INVALID_MESSAGE",`${name} is invalid`); return Number(value); };
+            const bindingRevision=parseRevision("bindingRevision"),leaseGeneration=parseRevision("leaseGeneration");
+            const result=await options.database.transaction(async client => {
+                await options.database.lockBindingFence(client,deviceFence(req,device,{sessionId,bindingRevision,leaseGeneration}));
+                const binding=await client.query<{binding_id:string}>("SELECT binding_id FROM bindings WHERE device_id=$1 AND session_id=$2 AND binding_revision=$3 AND lease_generation=$4 AND state='active'",[deviceId,sessionId,bindingRevision,leaseGeneration]);
+                if (!binding.rowCount) throw new HttpError(409,"BINDING_CHANGED","Binding no longer active");
+                const bounds=await client.query<{floor:string;head:string}>("SELECT COALESCE((SELECT archived_through FROM command_lane_retention WHERE device_id=$1 AND lane=$2),0) AS floor,COALESCE((SELECT last_seq FROM lane_counters WHERE device_id=$1 AND lane=$2),0) AS head",[deviceId,lane]);
+                return {version:1,deviceId,lane,sessionId,bindingId:binding.rows[0].binding_id,bindingRevision,leaseGeneration,archivedThrough:Number(bounds.rows[0].floor),head:Number(bounds.rows[0].head)};
+            });
+            sendJson(res,200,result); return;
+        }
         const commandMatch = /^\/v2\/devices\/([^/]+)\/commands$/.exec(url.pathname);
         if (req.method === "GET" && commandMatch) {
             const deviceId = decodeURIComponent(commandMatch[1]);
@@ -426,8 +443,9 @@ export function createApiServer(options: ApiServerOptions): Server {
 
     async function lockCommandAuthority(client: import("pg").PoolClient, commandId: string, sessionId: string, deviceId: string, lockSession = true): Promise<string | undefined> {
         let expiry: string | undefined;
-        const command = await client.query("SELECT 1 FROM commands WHERE command_id=$1 AND session_id=$2 AND device_id=$3",[commandId,sessionId,deviceId]);
+        const command = await client.query<{archived_at:Date|null}>("SELECT archived_at FROM commands WHERE command_id=$1 AND session_id=$2 AND device_id=$3 FOR SHARE",[commandId,sessionId,deviceId]);
         if (!command.rowCount) throw new HttpError(403,"FORBIDDEN","Dispatch command is not addressed to this binding");
+        if (command.rows[0].archived_at) throw new HttpError(409,"COMMAND_ARCHIVED","Command is no longer replayable");
         const origin = await client.query<{credential_id:string|null;owner_user_id:string;permission:string}>("SELECT * FROM public_command_authority WHERE command_id=$1",[commandId]);
         if (!origin.rowCount) return; // Preserved historical/GUI command contract.
         const actor = origin.rows[0];
@@ -472,13 +490,21 @@ export function createApiServer(options: ApiServerOptions): Server {
         return value;
     }
     async function streamCommands(req: IncomingMessage, res: ServerResponse, device: DevicePrincipal, lane: Lane, initialCursor: number): Promise<void> {
-        const head = await options.database.pool.query<{ last_seq: string }>("SELECT COALESCE((SELECT last_seq FROM lane_counters WHERE device_id=$1 AND lane=$2),0) AS last_seq", [device.deviceId, lane]);
-        if (initialCursor > Number(head.rows[0].last_seq)) throw new HttpError(409, "CURSOR_AHEAD", "Replay cursor is ahead of the durable lane watermark");
+        const first = await options.database.readCommandBatch(device.deviceId,lane,initialCursor,100);
+        if (initialCursor > first.head) throw new HttpError(409, "CURSOR_AHEAD", "Replay cursor is ahead of the durable lane watermark");
+        let initial: typeof first | undefined = first;
         beginSse(res);
         let cursor = initialCursor;
+        const checkBlockedCursor=async():Promise<void>=>{
+            await authenticateDevice(req);
+            // A paused TCP reader cannot reach the next polling iteration. Check
+            // expiry while waiting for drain so compaction can close it promptly.
+            await options.database.readCommandBatch(device.deviceId,lane,cursor,1);
+        };
         await pump(req, res, async () => {
             const currentDevice = await authenticateDevice(req);
-            const records = await options.database.readCommands(device.deviceId, lane, cursor, 100);
+            const records = initial ? initial.records : (await options.database.readCommandBatch(device.deviceId,lane,cursor,100)).records;
+            initial = undefined;
             for (const record of records) {
                 await authenticateDevice(req);
                 const skips = await options.database.pool.query("SELECT 1 FROM command_skips WHERE device_id=$1 AND lane=$2 AND lane_seq=$3", [device.deviceId,lane,record.laneSeq]);
@@ -494,15 +520,15 @@ export function createApiServer(options: ApiServerOptions): Server {
                 }
                 if (obsolete) {
                     await options.database.skipCommand(record);
-                    if (!await writeSse(res, String(record.laneSeq), "command.skipped", {deviceId: device.deviceId,lane,laneSeq: record.laneSeq,commandId: record.commandId,reason: "obsolete_binding"})) return false;
+                    if (!await writeSse(res, String(record.laneSeq), "command.skipped", {deviceId: device.deviceId,lane,laneSeq: record.laneSeq,commandId: record.commandId,reason: "obsolete_binding"}, checkBlockedCursor)) return false;
                 } else {
                     await options.authorization.authorizeDevice(currentDevice, record.sessionId, "read_commands");
-                    if (!await writeSse(res, String(record.laneSeq), "command", {...record,payload: {...payload,seq: record.laneSeq}})) return false;
+                    if (!await writeSse(res, String(record.laneSeq), "command", {...record,payload: {...payload,seq: record.laneSeq}}, checkBlockedCursor)) return false;
                 }
                 cursor = record.laneSeq;
             }
             return records.length > 0;
-        }, heartbeatMs, pollMs);
+        }, heartbeatMs, pollMs,checkBlockedCursor);
     }
     async function streamEvents(req: IncomingMessage, res: ServerResponse, sessionId: string, initialCursor: number): Promise<void> {
         const snapshot = await options.database.readSnapshot(sessionId);
@@ -529,6 +555,7 @@ function mapError(error: unknown): { status: number; code: string; message: stri
     if (error instanceof HttpError) return error;
     if (error instanceof PublicApiError) return {...error,message:error.message,retryable:false};
     if (error instanceof NativeConversationBoundError) return { status: 409, code: "CONVERSATION_BOUND_ELSEWHERE", message: error.message, retryable: false };
+    if (error instanceof CommandCursorExpiredError) return { status: 410, code: "CURSOR_EXPIRED", message: error.message, retryable: false };
     if (error instanceof StorageCapacityError) return {status: 429,code: "QUEUE_FULL",message: error.message,retryable: true};
     if (error instanceof StorageConflictError) return { status: 409, code: "CONFLICT", message: error.message, retryable: false };
     if (error instanceof StorageNotFoundError) return { status: 404, code: "NOT_FOUND", message: error.message, retryable: false };
@@ -626,22 +653,28 @@ function beginSse(res: ServerResponse): void {
     res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
     res.write("retry: 3000\n\n");
 }
-async function writeSse(res: ServerResponse, id: string, event: string, value: unknown): Promise<boolean> {
+async function writeSse(res: ServerResponse, id: string, event: string, value: unknown, onBlocked?:()=>Promise<void>): Promise<boolean> {
     if (res.destroyed || res.writableEnded) return false;
     const data = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(value)}\n\n`;
     if (res.write(data)) return true;
-    return waitForDrain(res);
+    return waitForDrain(res,onBlocked);
 }
-function waitForDrain(res: ServerResponse): Promise<boolean> {
+function waitForDrain(res: ServerResponse,onBlocked?:()=>Promise<void>): Promise<boolean> {
     if (res.destroyed || res.writableEnded) return Promise.resolve(false);
     return new Promise((resolve) => {
+        let active=true,checking=false;
+        const timer=onBlocked?setInterval(()=>{
+            if(checking || !active)return;
+            checking=true;
+            void onBlocked().catch(()=>{if(active){cleanup();res.destroy();resolve(false);}}).finally(()=>{checking=false;});
+        },100):undefined;
         const onDrain = (): void => { cleanup(); resolve(true); };
         const onClose = (): void => { cleanup(); resolve(false); };
-        const cleanup = (): void => { res.off("drain", onDrain); res.off("close", onClose); };
+        const cleanup = (): void => { active=false;if(timer)clearInterval(timer);res.off("drain", onDrain); res.off("close", onClose); };
         res.once("drain", onDrain); res.once("close", onClose);
     });
 }
-async function pump(req: IncomingMessage, res: ServerResponse, poll: () => Promise<boolean>, heartbeatMs: number, pollMs: number): Promise<void> {
+async function pump(req: IncomingMessage, res: ServerResponse, poll: () => Promise<boolean>, heartbeatMs: number, pollMs: number,onBlocked?:()=>Promise<void>): Promise<void> {
     let stopped = false;
     const stop = (): void => { stopped = true; };
     req.once("aborted", stop);
@@ -654,7 +687,7 @@ async function pump(req: IncomingMessage, res: ServerResponse, poll: () => Promi
             const now = Date.now();
             if (!sent && now - lastBeat >= heartbeatMs) {
                 if (!res.write(`: heartbeat ${new Date(now).toISOString()}\n\n`)) {
-                    if (!await waitForDrain(res)) break;
+                    if (!await waitForDrain(res,onBlocked)) break;
                 }
                 lastBeat = now;
             }

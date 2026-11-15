@@ -1,7 +1,7 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ApprovalEngine, AttachmentService, AuthorizationService, KeycloakOidcProvider, ServerDatabase, createApiServer } from "./index.js";
+import { ApprovalEngine, AttachmentService, AuthorizationService, KeycloakOidcProvider, RetentionWorker, ServerDatabase, createApiServer } from "./index.js";
 
 function required(name: string): string {
     const value = process.env[name]?.trim();
@@ -42,6 +42,7 @@ async function main(): Promise<void> {
     const publicApiToolBindings = qualifiedToolBindings();
     const database = new ServerDatabase({ poolConfig: { connectionString: required("DATABASE_URL"), max: positiveInteger("SDC_DATABASE_POOL_SIZE", 20), connectionTimeoutMillis: 5_000, idleTimeoutMillis: 30_000 } });
     let listener: ReturnType<typeof createApiServer> | undefined;
+    let retention: RetentionWorker | undefined;
     let stopping = false;
     try {
         const authorization = new AuthorizationService(database);
@@ -59,12 +60,19 @@ async function main(): Promise<void> {
         const attachments = new AttachmentService(database, { rootDirectory: resolve(required("SDC_ATTACHMENT_DIR")) });
 
         await database.migrate();
+        const retentionEnabled=process.env.SDC_RETENTION_ENABLED ?? "false";
+        if (!["true","false"].includes(retentionEnabled)) throw new Error("SDC_RETENTION_ENABLED must be true or false");
+        if (retentionEnabled==="true") {
+            const deviceIds=(process.env.SDC_RETENTION_DEVICE_IDS ?? "").split(",").map(id=>id.trim()).filter(Boolean);
+            retention=new RetentionWorker({database,deviceIds,intervalMs:positiveInteger("SDC_RETENTION_INTERVAL_MS",60_000),minAgeSeconds:positiveInteger("SDC_RETENTION_MIN_AGE_SECONDS",86_400),keepLast:positiveInteger("SDC_RETENTION_KEEP_LAST",128),batchSize:positiveInteger("SDC_RETENTION_BATCH_SIZE",100),lanesPerTick:positiveInteger("SDC_RETENTION_LANES_PER_TICK",8),onSweep:summary=>process.stdout.write(`retention ${JSON.stringify(summary)}\n`),onError:()=>process.stderr.write("retention sweep failed\n")});
+        }
         listener = createApiServer({ database, authorization, provider, approvalEngine, decisionPublicKey: createPublicKey(decisionPrivateKey), attachments,
             publicApiToolBindings });
         await new Promise<void>((resolveListen, rejectListen) => {
             listener!.once("error", rejectListen);
             listener!.listen(port, host, resolveListen);
         });
+        retention?.start();
         process.stdout.write(`sdc-server listening on ${host}:${port}; migrations current; caller tools disabled unless an explicit binding policy is added\n`);
 
         const stop = (): void => {
@@ -74,13 +82,14 @@ async function main(): Promise<void> {
             forceClose.unref();
             listener?.close(() => {
                 clearTimeout(forceClose);
-                void database.close().then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
+                void (async()=>{ await retention?.stop(); await database.close(); })().then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
             });
             listener?.closeIdleConnections();
         };
         process.once("SIGTERM", stop);
         process.once("SIGINT", stop);
     } catch (error) {
+        await retention?.stop();
         listener?.closeAllConnections();
         listener?.close();
         await database.close().catch(() => undefined);

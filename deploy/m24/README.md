@@ -72,3 +72,9 @@ Run **Cline Bridge: Revoke and Forget Server Credentials** for the selected prof
 - Sign and verify the release manifest with the operator-selected key or use the Marketplace process. A checksum alone is not a signature, and a project signature is not Marketplace approval.
 
 The selected local target’s evidence is recorded separately; do not transfer that acceptance to a different host or identity. M25 guide finalization and M26 frozen release/soak remain separate milestones.
+
+### MI-06 retention rollout (candidate)
+
+Apply migration 011 using the retention-aware server with `SDC_RETENTION_ENABLED=false`. Upgrade and verify every companion window on each selected device before adding that device to `SDC_RETENTION_DEVICE_IDS`; a mixed old/new device is not a ready cohort. Enable the worker only for that explicit cohort. Defaults are a 24-hour terminal age, 128-record recent tail, batches of 100, 60-second interval and eight lanes per sweep. An unresolved prefix can safely prevent reclamation. Turning the worker off prevents further compaction but does not restore removed payloads. Rollback SQL refuses after compaction or floor movement; keep using the retention-aware binary or restore a reviewed quiesced backup. No retained deployment is upgraded by candidate packaging.
+
+For repaired MI-06 candidate .2, quiesce server writers and apply migrations 011 and 012 with retention disabled before starting the retention-aware server. Migration 012 rejects already-compacted intermediate candidate-011 state; do not bypass that refusal or rewrite checksums. Upgrade and verify every window in the selected device cohort before enabling its allowlist entry. Companion candidate .2 and `sdc-server:mi06-candidate.2` remain unsigned, undeployed artifacts; the original MI-06 candidate is preserved as historical evidence.

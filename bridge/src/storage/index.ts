@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { canonicalJson, type ProducerCursor } from "@server-driven-chat/protocol";
 
 export type BridgeLane = "prompt" | "control";
-export type FaultPoint = "after_inbox_insert" | "before_cursor_advance" | "after_outbox_insert" | "before_attempt_start";
+export type FaultPoint = "after_inbox_insert" | "before_cursor_advance" | "after_outbox_insert" | "before_attempt_start" | "after_retention_checkpoint" | "after_retention_cursor";
 export type CommandInput = { commandId: string; sessionId: string; deviceId: string; lane: BridgeLane; laneSeq: number; payload: unknown };
 export type OutputInput = { eventId: string; sessionId: string; eventSeq: number; bridgeEpoch?: string; payload: unknown };
 export type AttemptState = "pending" | "applying" | "applied" | "rejected" | "reconciliation_required";
@@ -49,6 +49,7 @@ export class BridgeStore {
         if (this.#sessionScope !== undefined && input.sessionId !== this.#sessionScope) return this.#acceptForeign(input);
         const payload = canonicalJson(input.payload);
         return this.#transaction(() => {
+            if (input.laneSeq <= this.#retentionFloor(input.deviceId,input.lane)) throw new BridgeStorageConflict("command is below the installed archive floor");
             const prior = this.#db.prepare("SELECT session_id,device_id,lane,lane_seq,payload FROM inbox_commands WHERE command_id=?").get(input.commandId) as Record<string, unknown> | undefined;
             if (prior) {
                 if (prior.session_id !== input.sessionId || prior.device_id !== input.deviceId || prior.lane !== input.lane || prior.lane_seq !== input.laneSeq || prior.payload !== payload) throw new BridgeStorageConflict("command ID was reused with different content");
@@ -77,6 +78,7 @@ export class BridgeStore {
     /** Another session's command on the shared device lane: keep sequence continuity only, never its payload or work. */
     #acceptForeign(input: CommandInput): "duplicate" | "receipt" {
         return this.#transaction(() => {
+            if (input.laneSeq <= this.#retentionFloor(input.deviceId,input.lane)) throw new BridgeStorageConflict("command is below the installed archive floor");
             const prior = this.#db.prepare("SELECT command_id,session_id FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId, input.lane, input.laneSeq) as { command_id: string; session_id: string } | undefined;
             if (prior) {
                 if (prior.command_id !== input.commandId || prior.session_id !== input.sessionId) throw new BridgeStorageConflict("lane sequence was reused by another command");
@@ -113,10 +115,50 @@ export class BridgeStore {
         });
     }
 
-    /** Native attempts still applying or with an uncertain outcome. Retain their inbox for reconciliation. */
+    /** Applying attempts and durable command conflicts keep their inbox for reconciliation. */
     countUnresolvedAttempts(sessionId?: string): number {
-        const row = this.#db.prepare("SELECT count(*) AS count FROM application_attempts WHERE state IN ('applying','reconciliation_required') AND (? IS NULL OR session_id=?)").get(sessionId ?? null, sessionId ?? null) as { count: number };
+        const row = this.#db.prepare(`SELECT
+            (SELECT count(*) FROM application_attempts a WHERE a.state IN ('applying','reconciliation_required') AND (? IS NULL OR a.session_id=?)) +
+            (SELECT count(*) FROM command_dispatch d JOIN inbox_commands i USING(command_id) WHERE d.state='reconciliation_required' AND (? IS NULL OR i.session_id=?) AND NOT EXISTS (SELECT 1 FROM application_attempts a WHERE a.command_id=d.command_id AND a.state IN ('applying','reconciliation_required'))) AS count`).get(sessionId ?? null, sessionId ?? null, sessionId ?? null, sessionId ?? null) as { count: number };
         return Number(row.count);
+    }
+
+    #retentionFloor(deviceId:string,lane:BridgeLane):number {
+        const row=this.#db.prepare("SELECT archived_through FROM command_retention_checkpoints WHERE device_id=? AND lane=?").get(deviceId,lane) as {archived_through:number}|undefined;
+        return Number(row?.archived_through ?? 0);
+    }
+
+    /** Install an authenticated terminal-prefix checkpoint without discarding local work. */
+    applyCommandRecoveryCheckpoint(input:{deviceId:string;lane:BridgeLane;sessionId:string;expectedCursor:number;archivedThrough:number;head:number}):number {
+        if (!input.deviceId || !input.sessionId || !["prompt","control"].includes(input.lane) || ![input.expectedCursor,input.archivedThrough,input.head].every(n=>Number.isSafeInteger(n)&&n>=0) || input.archivedThrough>input.head || input.archivedThrough<=input.expectedCursor || (this.#sessionScope && this.#sessionScope!==input.sessionId)) throw new BridgeStorageConflict("Invalid retention checkpoint");
+        const result=this.#transaction(()=>{
+            const cursor=this.getCursor(input.deviceId,input.lane), floor=this.#retentionFloor(input.deviceId,input.lane);
+            if (cursor!==input.expectedCursor || input.archivedThrough<floor) throw new BridgeStorageConflict("Retention checkpoint raced or regressed");
+            const pending=this.#db.prepare("SELECT 1 FROM command_dispatch WHERE device_id=? AND lane=? AND lane_seq<=? AND state IN ('queued','applying','reconciliation_required') LIMIT 1").get(input.deviceId,input.lane,input.archivedThrough);
+            if (pending) {
+                // Persist the refusal before reporting it. Otherwise a restart could
+                // redispatch queued work whose server prefix is already archived.
+                this.#db.prepare("UPDATE application_attempts SET state='reconciliation_required',updated_at=unixepoch() WHERE state IN ('pending','applying') AND command_id IN (SELECT command_id FROM command_dispatch WHERE device_id=? AND lane=? AND lane_seq<=? AND state IN ('queued','applying','reconciliation_required'))").run(input.deviceId,input.lane,input.archivedThrough);
+                this.#db.prepare("UPDATE command_dispatch SET state='reconciliation_required',updated_at=unixepoch() WHERE device_id=? AND lane=? AND lane_seq<=? AND state IN ('queued','applying','reconciliation_required')").run(input.deviceId,input.lane,input.archivedThrough);
+                return undefined;
+            }
+            this.#db.prepare("INSERT INTO command_retention_checkpoints(device_id,lane,archived_through) VALUES(?,?,?) ON CONFLICT(device_id,lane) DO UPDATE SET archived_through=excluded.archived_through").run(input.deviceId,input.lane,input.archivedThrough);
+            this.#fault?.("after_retention_checkpoint");
+            this.#db.prepare("INSERT INTO receipt_cursors(device_id,lane,last_contiguous_seq) VALUES(?,?,?) ON CONFLICT(device_id,lane) DO UPDATE SET last_contiguous_seq=excluded.last_contiguous_seq").run(input.deviceId,input.lane,input.archivedThrough);
+            this.#fault?.("after_retention_cursor");
+            let next=input.archivedThrough;
+            while (this.#hasReceipt(input.deviceId,input.lane,next+1)) next++;
+            this.#db.prepare("UPDATE receipt_cursors SET last_contiguous_seq=? WHERE device_id=? AND lane=?").run(next,input.deviceId,input.lane);
+            this.#pruneForeignReceipts(input.deviceId,input.lane,next);
+            return next;
+        });
+        if (result === undefined) throw new BridgeStorageConflict("Local unfinished command conflicts with retention checkpoint");
+        return result;
+    }
+
+    /** Durable command conflicts must remain visible after a process restart. */
+    hasCommandReconciliation(sessionId:string):boolean {
+        return Boolean(this.#db.prepare("SELECT 1 FROM command_dispatch d JOIN inbox_commands i USING(command_id) WHERE i.session_id=? AND d.state='reconciliation_required' LIMIT 1").get(sessionId));
     }
 
     #bindScope(sessionId?: string): string | undefined {
@@ -213,6 +255,7 @@ export class BridgeStore {
     acceptSkip(input: {deviceId: string; lane: BridgeLane; laneSeq: number; commandId: string; reason: string}): void {
         this.#validateSeq(input.laneSeq);
         this.#transaction(() => {
+            if (input.laneSeq <= this.#retentionFloor(input.deviceId,input.lane)) throw new BridgeStorageConflict("skip is below the installed archive floor");
             const prior = this.#db.prepare("SELECT command_id,reason FROM command_skips WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId,input.lane,input.laneSeq) as {command_id: string; reason: string} | undefined;
             if (prior && (prior.command_id !== input.commandId || prior.reason !== input.reason)) throw new BridgeStorageConflict("conflicting skip identity");
             const command = this.#db.prepare("SELECT command_id FROM inbox_commands WHERE device_id=? AND lane=? AND lane_seq=? UNION ALL SELECT command_id FROM foreign_receipts WHERE device_id=? AND lane=? AND lane_seq=?").get(input.deviceId,input.lane,input.laneSeq,input.deviceId,input.lane,input.laneSeq) as {command_id: string} | undefined;
@@ -362,7 +405,9 @@ export class BridgeStore {
         if (!dispatchColumns.has("ack_sent_state")) this.#db.exec("ALTER TABLE command_dispatch ADD COLUMN ack_sent_state TEXT");
         this.#db.exec(`CREATE TABLE IF NOT EXISTS store_scope(singleton INTEGER PRIMARY KEY CHECK(singleton=1),session_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS foreign_receipts(device_id TEXT NOT NULL,lane TEXT NOT NULL CHECK(lane IN ('prompt','control')),lane_seq INTEGER NOT NULL CHECK(lane_seq>0),command_id TEXT NOT NULL,session_id TEXT NOT NULL,PRIMARY KEY(device_id,lane,lane_seq));
-            INSERT INTO schema_migrations(version,checksum) VALUES(3,'mi02-session-scope-v3') ON CONFLICT(version) DO NOTHING;`);
+            INSERT INTO schema_migrations(version,checksum) VALUES(3,'mi02-session-scope-v3') ON CONFLICT(version) DO NOTHING;
+            CREATE TABLE IF NOT EXISTS command_retention_checkpoints(device_id TEXT NOT NULL,lane TEXT NOT NULL CHECK(lane IN ('prompt','control')),archived_through INTEGER NOT NULL CHECK(archived_through>=0),PRIMARY KEY(device_id,lane));
+            INSERT INTO schema_migrations(version,checksum) VALUES(4,'mi06-retention-checkpoint-v1') ON CONFLICT(version) DO NOTHING;`);
     }
 
     #transaction<T>(operation: () => T): T {

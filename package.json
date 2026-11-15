@@ -41,7 +41,8 @@
     "test:m29": "npm run build && node --test tests/m29-server-policy.test.mjs",
     "test:mi01": "npm run build --workspace @server-driven-chat/protocol --workspace @server-driven-chat/server && node --test tests/mi01-multi-binding.test.mjs",
     "test:mi02": "npm run build && node --test tests/mi02-units.test.mjs tests/mi02-multi-window.test.mjs",
-    "test:m23": "npm run build && node --test tests/conformance/*.test.mjs tests/repair-*.test.mjs tests/m19-cline.test.mjs tests/m20-cline.test.mjs tests/m21-connect.test.mjs tests/m21-binding.test.mjs tests/m22-workflow.test.mjs"
+    "test:m23": "npm run build && node --test tests/conformance/*.test.mjs tests/repair-*.test.mjs tests/m19-cline.test.mjs tests/m20-cline.test.mjs tests/m21-connect.test.mjs tests/m21-binding.test.mjs tests/m22-workflow.test.mjs",
+    "test:mi06": "node scripts/test-mi06.mjs"
   },
   "devDependencies": {
     "openai": "7.30.0",
